@@ -1,0 +1,25 @@
+version: "3.9"
+
+services:
+  navidrome:
+    image: deluan/navidrome:latest
+    container_name: navidrome
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    ports:
+      - "${NAVIDROME_PORT:-4533}:4533"
+    environment:
+      ND_MUSICFOLDER: /music
+      ND_DATAFOLDER: /data
+      ND_PORT: 4533
+      ND_SCANINTERVAL: 1m
+      ND_SESSIONTIMEOUT: 24h
+    volumes:
+      - ${DWE_NAVIDROME_DATA_DIR:-/srv/dwe/navidrome/data}:/data
+      - ${DWE_MUSIC_DIR:-/srv/dwe/music}:/music:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4533/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

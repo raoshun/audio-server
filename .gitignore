@@ -1,0 +1,26 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+config.json
+
+# Runtime data and generated content
+/srv/
+*.log
+*.pid
+cache/
+**/.DS_Store
+
+# Local dev artifacts
+.vscode/
+.venv/
+.local-test/
+__pycache__/
+*.tmp
+*.bak
+
+# Music and staging data should live on the host, not in Git
+music/
+staging/
+navidrome/
+sync/
