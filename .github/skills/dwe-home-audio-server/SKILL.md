@@ -1,6 +1,6 @@
 ---
 name: dwe-home-audio-server
-description: "DWE 家庭用オーディオサーバーの構築・運用時に使う。MinIO を正本とし、ローカル clone へ一方向同期し、Navidrome を read-only でマウントする安全設計、検証、復旧、デプロイ手順を扱う。"
+description: "DWE 家庭用オーディオサーバーの構築・運用時に使う。MinIO を正本とし、ローカル clone へ一方向同期し、Navidrome を read-only でマウントする安全設計、backend設定レビュー、検証、復旧、デプロイ手順を扱う。"
 user-invocable: true
 ---
 
@@ -195,6 +195,72 @@ Local clone が削除・破損した場合:
 - dry-run で意図しない削除対象が出ていないか
 - 目的の保存先に書き込みが必要なプロセスだけがアクセスできるか
 - Navidrome が read-only でマウントされているか
+
+## DWE Backend 設定の標準手順
+
+DWE WebUI backendの設定ファイルを作成・レビューするときは、次の順で確認する。
+
+### 1. 設定の責務を限定する
+
+設定クラスはNavidrome接続情報とDWE検索条件だけを扱う。API通信、ログ出力、frontendへの設定公開、音源ファイル操作は設定クラスに入れない。
+
+最低限の設定項目:
+
+```text
+NAVIDROME_URL
+NAVIDROME_USER
+NAVIDROME_PASSWORD
+NAVIDROME_TIMEOUT_SECONDS
+DWE_ARTIST
+```
+
+### 2. 型と秘密情報を定義する
+
+- URLはHTTP URL型で検証する。
+- passwordは秘密文字列型で保持し、通常の文字列としてログへ出さない。
+- timeoutは数値型にし、必ず0より大きい値だけを許可する。
+- DWE artistは既定値を `Disney's World of English` とする。
+- `.env`の他サービス設定を読む場合は未使用キーを無視する。
+
+疑似コード:
+
+```text
+Settings:
+  navidrome_url: HttpUrl
+  navidrome_user: required string
+  navidrome_password: SecretStr
+  navidrome_timeout_seconds: integer greater than 0
+  dwe_artist: string with DWE default
+```
+
+### 3. 依存関係を登録する
+
+設定実装を追加したら、依存定義に `pydantic` と `pydantic-settings` を登録する。依存定義を追加しただけでは既存venvへ反映されないため、作業環境へインストールしてから検証する。
+
+```bash
+.venv/bin/pip install -r requirements.txt
+```
+
+### 4. 秘密値を表示せず検証する
+
+次の確認を行う。passwordの実値、`.env`の内容、credentialを含むログは表示しない。
+
+```bash
+.venv/bin/python -c "from backend.app.config import Settings; settings=Settings(); print(type(settings.navidrome_url).__name__); print(settings.navidrome_timeout_seconds); print(settings.dwe_artist); print(settings.navidrome_password)"
+NAVIDROME_TIMEOUT_SECONDS=0 .venv/bin/python -c "from backend.app.config import Settings; Settings()"
+NAVIDROME_URL=not-a-url .venv/bin/python -c "from backend.app.config import Settings; Settings()"
+git diff --check -- backend/app/config.py
+```
+
+期待結果:
+
+- 通常読込が成功する。
+- passwordが `**********` のようにマスクされる。
+- timeout=0と不正URLがValidationErrorになる。
+- `git diff --check`で空白エラーがない。
+- `config.py`、frontend bundle、ログ、Gitの追跡対象に秘密値がない。
+
+設定レビューで不足がある場合は、まず責務、公開フィールド、疑似コード、検証項目を提示してから実装を進める。秘密値はチャット、ログ、Gitへ再掲しない。
 
 ## 完了条件
 
