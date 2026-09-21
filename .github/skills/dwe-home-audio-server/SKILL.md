@@ -277,6 +277,71 @@ MVP が完了したとみなす条件は次の通り。
 - 認証情報が Git に入っていない
 - 既存のホームサーバー環境を破壊していない
 
+## ローカルフォールバック禁止
+
+**設計上の制約**: `NavidromeClient` は Navidrome API が利用できない場合でも **ローカル音楽ディレクトリの走査** によるフォールバックを行わない。システム全体の一方向データフロー（MinIO → Local clone → Navidrome）を維持し、ローカルデータがソースオブ Truth として扱われるリスクを排除する。
+
+### 方針
+1. `NavidromeClient._list_local_albums` 等のローカル走査メソッドは実装しない。未実装のまま残すか、`NotImplementedError` を投げるだけとする。
+2. Navidrome が利用不可の場合は **503 Service Unavailable** エラーを返し、呼び出し側にリトライや障害対応を促す。
+3. ドキュメント（この SKILL）に明記し、レビュー時に必ず確認するチェックリスト項目とする。
+4. 将来的にローカル走査が必要になるケースは別途 **データリカバリ** フローとして扱い、`import-dwe.sh` 等のバッチで手動同期を実行する。
+
+### 変更点
+* `backend/app/navidrome_client.py` の `_list_local_albums` 呼び出し箇所は例外捕捉でフォールバックせず、単に例外を再送出するように修正（実装は別 Issue）。
+* 本スキルドキュメントに上記項目を追加し、開発者が意図的にローカル走査を実装しようとしたときに警告が出るようにする。
+
+## LLM 経由の音楽検索 API 仕様
+
+### 目的
+ユーザーが自然言語でアルバムやトラックを指定できるようにし、バックエンドが **Navidrome の検索 API**（または自前インデックス）を呼び出して結果を返す。LLM はユーザー入力から検索クエリを抽出し、内部 API に委譲する役割を担う。
+
+### フロー概要
+1. **ユーザーリクエスト** – フロントエンドまたはチャットインターフェースから自然言語テキストを受け取る。
+2. **LLM ラッパー** – `gpt-4o` などのモデルを呼び出し、テキストから構造化検索クエリを抽出。例: `{'artist': 'Artist One', 'album': 'Greatest Hits'}`。
+3. **検索 API 呼び出し** – 抽出したクエリを内部 HTTP エンドポイント `POST /api/v1/search/music` に JSON で送信。
+4. **Navidrome 連携** – バックエンドは受け取ったクエリを Navidrome の `/api/v1/search` エンドポイントへ転送し、結果を取得。
+5. **レスポンス** – 取得したアルバム/トラック情報をそのままクライアントへ返す。エラー時は 503 を返し、ローカルフォールバックは行わない（前項参照）。
+
+### エンドポイント仕様
+
+| 項目 | 内容 |
+|------|------|
+| **URL** | `/api/v1/search/music` |
+| **Method** | `POST` |
+| **認証** | 既存 Navidrome と同一の Bearer トークン（`settings.navidrome_user/password` から生成） |
+| **Request Body** | ```json
+{ "query": "string", "filters": { "artist": "string", "album": "string", "track": "string" } }
+``` |
+| **Response (200)** | ```json
+{ "results": [ { "id": "string", "title": "string", "artist": "string", "album": "string", "source": "navidrome" } ] }
+``` |
+| **Response (503)** | Navidrome が利用不可、または内部エラー。ボディは `{ "error": "service unavailable" }` |
+| **Error handling** | 例外はロギングし、クライアントには最小情報だけ返す。ローカルフォールバックは行わない。 |
+
+### 認証・権限
+* 既存の Navidrome 認証情報（ユーザー名・パスワード）を使用し、バックエンドで **Bearer トークン** を生成してヘッダー `Authorization: Bearer <token>` を付与。
+* LLM 経由でも同一トークンを利用できるようにし、ユーザー単位のアクセス制御は別途 IAM で実装予定。
+
+### テスト方針
+1. LLM ラッパーの出力をモックし、`POST /api/v1/search/music` が正しい Navidrome 呼び出しになることを検証。
+2. Navidrome が 503 を返したシナリオでエラーハンドリングが期待通りに動くことをテスト。
+3. 認証ヘッダーが必須であることを確認するユニットテストを追加。
+
+### 実装指針（バックエンド側）
+* FastAPI（または既存 Flask）で新しいエンドポイントを作成。
+* リクエストボディは `pydantic.BaseModel` でバリデーション。
+* `httpx.AsyncClient` で Navidrome の検索 API に非同期リクエスト。
+* 成功時は Navidrome から返された JSON をそのままクライアントに流す。
+* 失敗時は `HTTPException(status_code=503, detail="service unavailable")` を送出。
+
+### 今後の拡張
+* 大規模検索のために **Elasticsearch** などの外部インデックスを導入し、LLM が直接検索できるようにする。
+* ユーザーごとの **サブスクリプション/権限** を付与し、検索結果をフィルタリングする。
+* 検索ログを収集し、LLM のプロンプト最適化に利用する。
+
+## 例示プロンプト
+
 ## 例示プロンプト
 
 - 「DWE オーディオサーバーを MinIO を正本とした構成でセットアップして」
@@ -284,6 +349,47 @@ MVP が完了したとみなす条件は次の通り。
 - 「Navidrome を read-only の clone だけ参照する構成にして」
 - 「DWE FLAC の検証と MinIO へのアップロード手順を整理して」
 - 「Local clone が壊れた場合の復旧手順をまとめて」
+
+## LLM 経由音楽検索の例示プロンプト
+
+- 「最近のアーティスト 'Artist One' のベストアルバムを教えて」
+- 「'Greatest Hits' というアルバムのトラック一覧を取得したい」
+- 「'Jazz' ジャンルで 2024 年以降にリリースされた曲を検索して」
+
+## Docker 経由で実行する設計
+
+本リポジトリは **Docker Compose** によって全サービス（MinIO、Navidrome、バックエンド）を統合的に起動します。バックエンドのコード（特に `NavidromeClient`）は Docker コンテナ内で実行されることを前提に設計されており、以下の点を明記します。
+
+* **サービス定義** – `docker-compose.yml` の `backend` サービスは `Dockerfile` で構築し、Python 環境と依存パッケージをコンテナ内に閉じ込めます。`.venv` はホスト側で使用せず、コンテナ起動時に `pip install -r requirements.txt` が走ります。
+* **環境変数** – Navidrome 接続情報は `.env`（Git 管理外）から `docker compose` に注入します。例:
+  ```
+  NAVIDROME_URL=http://navidrome:4533
+  NAVIDROME_USER=admin
+  NAVIDROME_PASSWORD=supersecret
+  NAVIDROME_TIMEOUT_SECONDS=5
+  DWE_ARTIST=Artist One,Artist Two
+  ```
+* **実行コマンド** – API の動作確認やナビドロームから楽曲名取得は次のように Docker から呼び出します。
+  ```bash
+  # コンテナに入ってテストスクリプトを実行
+  docker compose run --rm backend python - <<'PY'
+  import asyncio
+  from backend.app.config import Settings
+  from backend.app.navidrome_client import NavidromeClient
+
+  settings = Settings()
+  client = NavidromeClient(settings)
+
+  async def main():
+      result = await client.list_albums()
+      print(result)
+  asyncio.run(main())
+  PY
+  ```
+* **テスト実行** – 同様に `docker compose run --rm backend pytest -q tests/test_navidrome_client.py` でテストが走ります。
+* **CI/CD** – GitHub Actions のワークフローは同様に `docker compose` を利用し、プルリクエストごにコンテナ上でユニットテストが実行されます。これによりローカル環境と同一の依存解決・実行環境が保証されます。
+
+上記手順を **SKILL** の実装ガイドとして掲載し、開発者が Docker 経由でコードを検証・実行できることを明示します。
 
 ## 関連ワークスペースファイル
 
