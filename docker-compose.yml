@@ -23,3 +23,23 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: dwe_backend
+    restart: unless-stopped
+    depends_on:
+      navidrome:
+        condition: service_healthy
+    environment:
+      # Settings read from .env or host environment variables.
+      - NAVIDROME_URL=http://navidrome:4533
+      - NAVIDROME_USER=${NAVIDROME_USER:-admin}
+      - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD:-admin}
+      - DWE_MUSIC_DIR=${DWE_MUSIC_DIR:-/srv/dwe/music}
+    volumes:
+      - ./:/app:ro
+    ports:
+      - "8000:8000"
