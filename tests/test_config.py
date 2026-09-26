@@ -12,7 +12,7 @@ def test_settings_valid_creation():
         navidrome_user="user",
         navidrome_password="secret",
         navidrome_timeout_seconds=10,
-        dwe_artist=["Test Artist"],
+        dwe_artist="Test Artist",
     )
     assert settings.navidrome_url.host == "example.com"
     assert settings.navidrome_timeout_seconds == 10
@@ -29,7 +29,7 @@ def test_settings_invalid_timeout(timeout):
             navidrome_user="user",
             navidrome_password="secret",
             navidrome_timeout_seconds=timeout,
-            dwe_artist=["Test Artist"],
+            dwe_artist="Test Artist",
         )
 
 
@@ -41,7 +41,7 @@ def test_settings_invalid_url():
             navidrome_user="user",
             navidrome_password="secret",
             navidrome_timeout_seconds=10,
-            dwe_artist=["Test Artist"],
+            dwe_artist="Test Artist",
         )
 
 def test_settings_multiple_artists():
@@ -51,6 +51,6 @@ def test_settings_multiple_artists():
         navidrome_user="user",
         navidrome_password="secret",
         navidrome_timeout_seconds=10,
-        dwe_artist=["Artist One", "Artist Two"],
+        dwe_artist="Artist One",
     )
-    assert settings.dwe_artist == ["Artist One", "Artist Two"]
+    assert settings.dwe_artist == "Artist One"

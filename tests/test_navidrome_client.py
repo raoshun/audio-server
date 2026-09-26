@@ -1,5 +1,5 @@
-from unittest.mock import AsyncMock, patch
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import SecretStr
@@ -17,7 +17,7 @@ def settings_fixture():
         navidrome_password=SecretStr("secret"),
         navidrome_timeout_seconds=5,
         dwe_music_dir=Path("/tmp/nonexistent-dwe-music"),
-        dwe_artist=["Artist One", "Artist Two"],
+        dwe_artist="Artist One",
     )
 
 
