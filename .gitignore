@@ -24,3 +24,5 @@ music/
 staging/
 navidrome/
 sync/
+
+model_cache/

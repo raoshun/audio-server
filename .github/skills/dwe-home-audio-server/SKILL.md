@@ -386,8 +386,32 @@ MVP が完了したとみなす条件は次の通り。
   asyncio.run(main())
   PY
   ```
-* **テスト実行** – 同様に `docker compose run --rm backend pytest -q tests/test_navidrome_client.py` でテストが走ります。
+* **テスト実行** – `docker compose run --rm test` でコンテナ内の pytest が走ります。バックエンド全テストは `docker compose run --rm test pytest -q` と実行できます。
 * **CI/CD** – GitHub Actions のワークフローは同様に `docker compose` を利用し、プルリクエストごにコンテナ上でユニットテストが実行されます。これによりローカル環境と同一の依存解決・実行環境が保証されます。
+
+### Makefile の利用
+
+このリポジトリは **Makefile** を提供しており、Docker Compose の
+コマンドをラップしています。開発や検証のときは以下のターゲットを
+実行してください。
+
+```bash
+make up          # Docker Compose で全サービスを起動 (初回はイメージをビルド)
+make down        # 停止・削除
+make test        # コンテナ内 pytest を実行
+make lint        # ruff でコードを静的解析
+make logs        # サービスログを tail -f で表示
+make shell       # バックエンドコンテナにシェルで入る
+make sync        # 同期スクリプトの実行 (ローカル clone 更新)
+make verify      # ビルド・テスト・Lint をまとめて実行
+```
+
+`make verify` は **ビルド → テスト → Lint** を順に行い、CI と同等
+のチェックをローカルで手軽に走らせることができます。Makefile は
+`.PHONY` でターゲットを明示し、インデントはタブで記述しています。
+
+これらのコマンドは **Docker 環境が利用可能** なことが前提です。Docker
+や Docker Compose がインストールされていない環境では実行できません。
 
 上記手順を **SKILL** の実装ガイドとして掲載し、開発者が Docker 経由でコードを検証・実行できることを明示します。
 
