@@ -1,8 +1,8 @@
-aiohttp
 pydantic
 pydantic-settings
 pytest
 fastapi
 httpx
-httpx2
 pytest-asyncio
+uvicorn
+ruff

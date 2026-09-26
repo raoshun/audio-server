@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -9,7 +9,7 @@ from backend.app.navidrome_client import NavidromeClient
 
 class MusicSearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
-    filters: Optional[Dict[str, str]] = None
+    filters: dict[str, str] | None = None
 
 
 class MusicSearchResponse(BaseModel):

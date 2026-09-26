@@ -25,9 +25,8 @@ COPY config.json .
 # Use a non‑root user for runtime security
 USER appuser
 
-# Default command – replace with the actual entry point if different
-# Example assumes a FastAPI app exposing `backend.app.main:app`
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command – run the FastAPI application defined in search_api.py
+CMD ["uvicorn", "backend.app.search_api:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # Ensure the source root is on PYTHONPATH so imports like `import backend` work
 ENV PYTHONPATH=/app

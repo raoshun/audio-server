@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   navidrome:
     image: deluan/navidrome:latest
@@ -43,3 +41,54 @@ services:
       - ./:/app:ro
     ports:
       - "8000:8000"
+
+  # テスト実行用サービス（Docker 上で pytest を走らせる）
+  # CI やローカル開発時に `docker compose run --rm test` で実行できる
+  test:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      - NAVIDROME_URL=http://navidrome:4533
+      - NAVIDROME_USER=${NAVIDROME_USER:-admin}
+      - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD:-admin}
+      - DWE_MUSIC_DIR=${DWE_MUSIC_DIR:-/srv/dwe/music}
+    user: "${UID:-1000}:${GID:-1000}"
+    # Mount source code as read‑write for lint/fix operations.
+    volumes:
+      - ./:/app
+    command: ["pytest", "-q"]
+
+  lyrics:
+    build:
+      context: .
+      dockerfile: lyrics/Dockerfile
+    container_name: dwe_lyrics
+    restart: "no"
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-en}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-auto}
+      DWE_MUSIC_DIR: /music
+      DWE_LYRICS_DIR: /music
+      FORCE: ${FORCE:-false}
+      DRY_RUN: ${DRY_RUN:-false}
+      # Enable VAD filter to suppress repeated output on silent tails.
+      WHISPER_VAD_FILTER: "true"
+      WHISPER_VAD_THRESHOLD: "0.5"
+    volumes:
+      - ${DWE_MUSIC_DIR:-/srv/dwe/music}:/music
+      # Mount the source code into the package directory to allow live edits without overwriting the app root.
+      - ./lyrics:/app/lyrics
+      # Bind‑mount a host directory for model cache (ensure it exists locally).
+      - ./model_cache:/models
+    working_dir: /app
+    command: ["python", "-m", "lyrics"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
