@@ -1,4 +1,7 @@
+#!/usr/bin/env python3
+
 import asyncio
+
 from backend.app.config import Settings
 from backend.app.navidrome_client import NavidromeClient
 
@@ -23,7 +26,8 @@ async def main() -> None:
     print(f"🔎 Retrieved {len(albums)} albums. Showing up to 5 titles:")
     for i, album in enumerate(albums[:5]):
         if isinstance(album, dict):
-            title = album.get("title") or album.get("name") or album.get("id")
+            # title = album.get('title') or album.get('name') or album.get('id')
+            title = album
         else:
             title = str(album)
         print(f"{i+1}. {title}")

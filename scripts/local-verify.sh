@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-DWE_MUSIC_DIR="${DWE_MUSIC_DIR:-/srv/dwe/music}"
-DWE_NAVIDROME_DATA_DIR="${DWE_NAVIDROME_DATA_DIR:-/srv/dwe/navidrome/data}"
-DWE_STAGING_DIR="${DWE_STAGING_DIR:-/srv/dwe/staging}"
+# Default directories point to system paths that may require root permissions.
+# For local development without elevated privileges, fall back to subdirectories
+# under the user's home directory. Users can still override these by setting
+# the corresponding environment variables.
+HOME_DWE_ROOT="${HOME}/dwe"
+DWE_MUSIC_DIR="${DWE_MUSIC_DIR:-${HOME_DWE_ROOT}/music}"
+DWE_NAVIDROME_DATA_DIR="${DWE_NAVIDROME_DATA_DIR:-${HOME_DWE_ROOT}/navidrome/data}"
+DWE_STAGING_DIR="${DWE_STAGING_DIR:-${HOME_DWE_ROOT}/staging}"
 
 mkdir -p "$DWE_MUSIC_DIR" "$DWE_NAVIDROME_DATA_DIR" "$DWE_STAGING_DIR" \
   "$DWE_STAGING_DIR/incoming" "$DWE_STAGING_DIR/validated" "$DWE_STAGING_DIR/rejected"
