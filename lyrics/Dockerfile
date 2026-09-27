@@ -13,7 +13,9 @@ ENV PATH="${VIRTUAL_ENV}/bin:$PATH"
 
 # Install Python dependencies.
 COPY lyrics/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Upgrade pip to the latest version to avoid resolver issues with older pip versions.
+RUN pip install --upgrade --no-cache-dir pip && \
+    pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy application code into a package directory.
 # Copy the lyrics package source.

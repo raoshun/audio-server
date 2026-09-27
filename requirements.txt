@@ -6,3 +6,5 @@ httpx
 pytest-asyncio
 uvicorn
 ruff
+playwright
+pytest-playwright

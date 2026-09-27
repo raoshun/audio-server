@@ -76,6 +76,16 @@ class NavidromeClient:
             "v": "1.16.1",
         }
 
+    def auth_params(self) -> dict:
+        """Public accessor for authentication parameters.
+
+        The original implementation used the private ``_auth_params`` method
+        directly, which triggers lint warnings about accessing a protected
+        member. Exposing a thin public wrapper keeps the original behaviour
+        while satisfying the linter's expectations.
+        """
+        return self._auth_params()
+
     async def _get_xml(
         self,
         endpoint: str,
@@ -99,8 +109,30 @@ class NavidromeClient:
         # ``urllib.request.urlopen`` respects a timeout argument.
 
         def _fetch():
-            with urllib.request.urlopen(url, timeout=self.timeout) as response:
-                return response.read().decode()
+            # Log the URL before making the request for better debugging.
+            print(f"[NavidromeClient] GET {url}")
+            try:
+                with urllib.request.urlopen(url, timeout=self.timeout) as response:
+                    # Print debug info; Docker captures stdout.
+                    status = getattr(response, "status", "N/A")
+                    # Log request URL and HTTP status (short comment).
+                    print(
+                        (
+                            f"[NavidromeClient] GET {url} -> status "
+                            f"{status}"
+                        )
+                    )
+                    return response.read().decode()
+            except urllib.error.HTTPError as e:
+                # Log HTTP errors with code and reason then re‑raise.
+                # Log HTTPError details concisely, splitting the long f‑string.
+                print(
+                    (
+                        f"[NavidromeClient] HTTPError {e.code} for {url}: "
+                        f"{e.reason}"
+                    )
+                )
+                raise
         text = await asyncio.to_thread(_fetch)
         try:
             return ET.fromstring(text)
@@ -185,15 +217,67 @@ class NavidromeClient:
         params = {"query": query}
         if filters:
             params.update(filters)
-        # Subsonic search – returns XML. Convert to a simple dict.
-        root = await self._get_xml("/rest/search", params)
-        results = []
-        for el in root.iter("artist"):
-            results.append({
-                "id": el.attrib.get("id"),
-                "name": el.attrib.get("name"),
-            })
+        # Subsonic search – use the newer /rest/search2 endpoint which is
+        # supported by recent Navidrome versions. The older /rest/search
+        # endpoint returns HTTP 410 (Gone) in our deployment.
+        # Perform the request and obtain the XML root element.
+        root = await self._get_xml("/rest/search2", params)
+
+        # The XML returned by Navidrome may include a namespace in the tag
+        # names (e.g. ``{http://subsonic.org/restapi}artist``). Using a plain
+        # tag name with ``root.iter("artist")`` would miss those elements,
+        # resulting in an empty result set and potentially a parse error if
+        # the response shape differs from expectations. To robustly handle any
+        # namespace, we iterate over all elements and match on the local tag
+        # name after the ``}`` separator.
+        results: list[dict[str, str | None]] = []
+        for el in root.iter():
+            if el.tag.split('}')[-1] == "artist":
+                results.append({
+                    "id": el.attrib.get("id"),
+                    "name": el.attrib.get("name"),
+                })
         return {"results": results}
+
+    async def get_all_tracks(self) -> dict:
+        """Retrieve every track from Navidrome.
+
+        Navidrome does not support the ``/rest/getSongs`` Subsonic endpoint.
+        Instead we query ``/rest/search2`` with a wildcard query (``*``) and a
+        sufficiently large ``size`` to return the full catalog. The endpoint
+        returns XML regardless of the ``format`` parameter, so we reuse the
+        internal ``_get_xml`` helper to fetch and parse the response.
+
+        The XML contains ``<song>`` elements for each track. We extract the
+        element attributes into plain dictionaries and normalise the shape
+        to ``{"results": [<track dict>, ...]}`` which matches the expectations
+        of the rest of the backend.
+        """
+        # Perform a search with a wildcard query that matches all tracks.
+        # ``size`` is set high enough to cover the catalog; Navidrome caps the
+        # maximum internally (e.g., 5000), but 1000 is ample for typical use.
+        # ``type=track`` ensures Navidrome returns song entries rather than
+        # defaulting to artists. Without this parameter the endpoint may
+        # respond with a 404 or an empty result set.
+        search_params = {"query": "*", "size": "1000", "type": "track"}
+        # Build and log the full request URL for debugging purposes.
+        auth = self._auth_params()
+        auth.update(search_params)
+        query = urlencode(auth, safe="*", quote_via=quote)
+        debug_url = f"{self.base_url.rstrip('/')}/rest/search2?{query}"
+        print(f"[NavidromeClient] get_all_tracks URL: {debug_url}")
+
+        root = await self._get_xml("/rest/search2", search_params)
+
+        # Extract <song> elements. The tag may include a namespace, so we
+        # compare the local name after the ``}`` separator.
+        tracks: list[dict[str, str | None]] = []
+        for el in root.iter():
+            if el.tag.split('}')[-1] == "song":
+                # Copy all attributes; values are already strings.
+                tracks.append(dict(el.attrib))
+
+        return {"results": tracks}
 
     @staticmethod
     def _build_query_string(params: dict) -> str:

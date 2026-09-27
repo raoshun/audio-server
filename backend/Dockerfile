@@ -17,6 +17,22 @@ WORKDIR /app
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Install Playwright browsers as the root user (required for system‑level
+# dependencies).  The browsers are initially placed in the default root
+# cache directory.  We then copy them to the appuser's cache directory
+# where the non‑root runtime can access them without needing to traverse
+# the protected ``/root`` home directory.
+RUN python -m playwright install --with-deps && \
+    chmod -R a+rx /root/.cache/ms-playwright && \
+    mkdir -p /home/appuser/.cache/ms-playwright && \
+    cp -r /root/.cache/ms-playwright/* /home/appuser/.cache/ms-playwright && \
+    chmod -R a+rx /home/appuser/.cache/ms-playwright && \
+    # Diagnostic listing to verify browsers are present at build time
+    ls -R /home/appuser/.cache/ms-playwright
+
+# Tell Playwright where to find the browsers for runtime.  Using the
+# appuser's cache location avoids permission issues with ``/root``.
+ENV PLAYWRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright
 
 # Copy application source (read‑only mount will override during dev)
 COPY backend/ ./backend/

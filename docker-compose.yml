@@ -10,8 +10,16 @@ services:
       ND_MUSICFOLDER: /music
       ND_DATAFOLDER: /data
       ND_PORT: 4533
+      # Enable Subsonic API compatibility required by backend client
+      ND_SUBSONIC: "true"
+      ND_SUBSONIC_API_VERSION: "1.16.1"
+      # Enable legacy routing so that /rest/getSongs and other Subsonic endpoints are available
+      ND_SUBSONIC_ROUTING: "legacy"
       ND_SCANINTERVAL: 1m
       ND_SESSIONTIMEOUT: 24h
+      # Explicit admin credentials for Subsonic API authentication
+      ND_ADMIN_USER: "${NAVIDROME_USER:-admin}"
+      ND_ADMIN_PASSWORD: "${NAVIDROME_PASSWORD:-admin}"
     volumes:
       - ${DWE_NAVIDROME_DATA_DIR:-/srv/dwe/navidrome/data}:/data
       - ${DWE_MUSIC_DIR:-/srv/dwe/music}:/music:ro
@@ -48,15 +56,25 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    depends_on:
+      navidrome:
+        condition: service_healthy
+      backend:
+        condition: service_started
     environment:
       - NAVIDROME_URL=http://navidrome:4533
       - NAVIDROME_USER=${NAVIDROME_USER:-admin}
       - NAVIDROME_PASSWORD=${NAVIDROME_PASSWORD:-admin}
       - DWE_MUSIC_DIR=${DWE_MUSIC_DIR:-/srv/dwe/music}
-    user: "${UID:-1000}:${GID:-1000}"
+      - PLAYWRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright
     # Mount source code as read‑write for lint/fix operations.
     volumes:
       - ./:/app
+    # Ensure the test container can resolve the backend service name used in the UI.
+    # Map "backend" to the Docker host gateway IP, which forwards to the published
+    # port 8000. This works across Linux, macOS and Windows Docker setups.
+    extra_hosts:
+      - "backend:host-gateway"
     command: ["pytest", "-q"]
 
   lyrics:

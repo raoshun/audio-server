@@ -77,6 +77,38 @@ chmod +x scripts/*.sh
 docker compose up -d
 ```
 
+## Running the application
+
+The services are defined in `docker-compose.yml`. The typical workflow is:
+
+1. **Start the containers** – the Makefile provides a shortcut:
+
+   ```bash
+   make up
+   ```
+
+   This builds (if needed) and runs the `backend`, `navidrome`, and `lyrics`
+   services in detached mode.
+
+2. **Access the UI** – the FastAPI backend serves the static frontend at the
+   root path. Open a web browser on any device in your local network and go to:
+
+   - `http://localhost:8000/` when testing on the same host, or
+   - `http://<your‑host‑ip>:8000/` from other devices (e.g., a smartphone).
+
+   The page is responsive and works on mobile browsers without additional
+   configuration.
+
+3. **Stop the services** when you are done:
+
+   ```bash
+   make down
+   ```
+
+These commands use Docker Compose under the hood, respecting the environment
+variables defined in `.env`. Ensure that the `.env` file is populated before
+running `make up`.
+
 ## Project layout
 
 ```text

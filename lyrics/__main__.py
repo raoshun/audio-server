@@ -25,8 +25,8 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, List
 
 from faster_whisper import WhisperModel  # type: ignore
 
@@ -79,7 +79,7 @@ def _format_timestamp(seconds: float) -> str:
     return f"[{minutes:02d}:{secs:05.2f}]"
 
 
-def _segment_to_lrc_lines(segment: object) -> List[str]:
+def _segment_to_lrc_lines(segment: object) -> list[str]:
     """Convert a Whisper segment (dict or ``Segment`` object) to LRC lines.
 
     The function is tolerant to the concrete type returned by
@@ -103,7 +103,7 @@ def _segment_to_lrc_lines(segment: object) -> List[str]:
         return []
 
     timestamp = _format_timestamp(start)
-    lines: List[str] = []
+    lines: list[str] = []
     for line in text.splitlines():
         clean = line.strip()
         if clean:
@@ -157,7 +157,7 @@ def _load_model(settings: Settings) -> WhisperModel:
         )
 
 
-def _transcribe(audio_path: Path, settings: Settings) -> List[dict]:
+def _transcribe(audio_path: Path, settings: Settings) -> list[dict]:
     """Run Whisper transcription and return a list of segment dicts.
 
     ``faster-whisper`` yields segments as a generator. Converting the
@@ -199,7 +199,7 @@ def _write_lrc(
     print(f"[INFO] Wrote LRC file: {lrc_path}")
 
 
-def main(argv: List[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Transcribe audio to LRC using faster-whisper."
     )
@@ -244,7 +244,7 @@ def main(argv: List[str] | None = None) -> int:
     segments = _transcribe(audio_path, settings)
     print(f"[INFO] Received {len(segments)} segments from Whisper")
 
-    lrc_lines: List[str] = []
+    lrc_lines: list[str] = []
     for seg in segments:
         lrc_lines.extend(_segment_to_lrc_lines(seg))
 

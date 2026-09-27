@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DWE 曲再生</title>
+    <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+    <header>
+        <h1>DWE 曲検索 &amp; 再生</h1>
+    </header>
+    <main>
+        <section class="search">
+            <input type="text" id="query" placeholder="曲名やアーティストを入力" />
+            <button id="searchBtn">検索</button>
+            <button id="listAllBtn">全曲一覧</button>
+        </section>
+        <section class="results">
+            <ul id="resultList"></ul>
+        </section>
+        <section class="player" style="display:none;">
+            <audio id="player" controls></audio>
+        </section>
+    </main>
+    <script src="/app.js"></script>
+</body>
+</html>
