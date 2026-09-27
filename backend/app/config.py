@@ -3,10 +3,10 @@ from pathlib import Path
 from pydantic import Field, HttpUrl, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# List import removed; dwe_artist is now a simple string.
+# List のインポートは削除されました。dwe_artist はシンプルな文字列になりました。
 
 
-# 環境変数から設定を読み込むためのクラス
+# 環境変数から設定を読み込むクラスです
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -18,57 +18,55 @@ class Settings(BaseSettings):
         default=Path("/srv/dwe/music"),
         description="Base directory containing music files.")
 
-    # The following paths are derived from ``dwe_music_dir``.
-    # They are exposed as read‑only properties so they update automatically
-    # when the base directory changes.
+    # 以下のパスは ``dwe_music_dir`` から派生します。
+    # 読み取り専用プロパティとして公開され、ベースディレクトリが変更されたときに自動的に更新されます。
 
     @property
     def dwe_root_dir(self) -> Path:
-        """Root directory for DWE operations.
+        """DWE 操作のルートディレクトリ。
 
-        ``dwe_music_dir`` is ``<root>/music``; the root is two levels up.
+        ``dwe_music_dir`` は ``<root>/music`` で、ルートは2階層上にあります。
         """
         return self.dwe_music_dir.parent.parent / "dwe"
 
     @property
     def dwe_navidrome_data_dir(self) -> Path:
-        """Navidrome data directory derived from the music base.
+        """音楽ベースから導出された Navidrome データディレクトリ。
         """
         return self.dwe_music_dir.parent / "navidrome" / "data"
 
     @property
     def dwe_navidrome_config_dir(self) -> Path:
-        """Navidrome config directory derived from the music base.
+        """音楽ベースから導出された Navidrome 設定ディレクトリ。
         """
         return self.dwe_music_dir.parent / "navidrome" / "config"
 
     @property
     def dwe_staging_dir(self) -> Path:
-        """Staging base directory derived from the music base.
+        """音楽ベースから導出されたステージングのベースディレクトリ。
         """
         return self.dwe_music_dir.parent / "staging"
 
     @property
     def dwe_staging_incoming_dir(self) -> Path:
-        return self.dwe_staging_dir / "incoming"
+        return self.dwe_staging_dir / "incoming"  # 受信ディレクトリ
 
     @property
     def dwe_staging_validated_dir(self) -> Path:
-        return self.dwe_staging_dir / "validated"
+        return self.dwe_staging_dir / "validated"  # 検証済みディレクトリ
 
     @property
     def dwe_staging_rejected_dir(self) -> Path:
-        return self.dwe_staging_dir / "rejected"
+        return self.dwe_staging_dir / "rejected"  # 却下ディレクトリ
 
     @property
     def dwe_sync_log_dir(self) -> Path:
-        return self.dwe_music_dir.parent / "sync" / "logs"
+        return self.dwe_music_dir.parent / "sync" / "logs"  # 同期ログディレクトリ
 
     @property
     def dwe_sync_state_dir(self) -> Path:
-        return self.dwe_music_dir.parent / "sync" / "state"
-    # Single artist name for DWE operations. Previously a list; simplified
-    # to a single string to reduce configuration complexity.
+        return self.dwe_music_dir.parent / "sync" / "state"  # 同期状態ディレクトリ
+    # DWE 操作用のシングルアーティスト名です。以前はリストでしたが、設定の複雑さを減らすため文字列に簡素化しました。
     dwe_artist: str = Field(
         default="Disney's World of English",
-        description="The artist name to filter tracks by.")
+        description="トラックをフィルタリングするアーティスト名。")

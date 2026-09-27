@@ -13,24 +13,22 @@ import logging
 import requests
 from fastapi.responses import StreamingResponse
 
-# Configure basic logging to ensure that logs are emitted to stdout/stderr
-# inside the Docker container. This helps surface any validation or runtime
-# errors that currently result in a generic 503 response.
+# Docker コンテナ内で stdout / stderr にログを出力するため、基本的なロギングを設定します。
+# これにより、現在 503 応答になるようなバリデーションやランタイムエラーが可視化されます。
 logging.basicConfig(level=logging.INFO)
 
-# Attempt to load Settings at import time so that any ValidationError is
-# logged immediately. The API also creates Settings per request, but early
-# visibility aids debugging.
-# ValidationError is now imported with BaseModel and Field above.
+# Settings のロードをインポート時に試み、ValidationError が即座に記録されるようにします。
+# API はリクエストごとにも Settings を作成しますが、早期に可視化できるとデバッグが楽になります。
+# ValidationError は上記で BaseModel と Field をインポートしています。
 
 try:
     _startup_settings = Settings()
-    # Log settings without exceeding line length limits.
+    # 行長制限を超えないように設定情報をログ出力します。
     logging.info(
         "[search_api] Settings loaded successfully: %s",
         _startup_settings,
     )
-except Exception as e:  # pragma: no cover - handled at runtime  # noqa: BLE001
+except Exception as e:  # pragma: no cover - 実行時にハンドリング  # noqa: BLE001
     logging.error("[search_api] Settings load error: %s", e)
 
 
@@ -98,6 +96,8 @@ async def get_track_url(track_id: str):
 # ---------------------------------------------------------------------------
 # Proxy endpoint for streaming a track through this service.
 # ---------------------------------------------------------------------------
+
+
 @app.get("/api/v1/track/stream/{track_id}")
 def proxy_track_stream(track_id: str, request: Request):
     """Fetch the raw audio stream from Navidrome and return it to the client.
