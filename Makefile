@@ -53,6 +53,8 @@ lint:
 	# Disable ruff cache because the container file system may be read‑only in other services.
 	$(DC) up -d --build $(TEST_SERVICE)
 	$(DC) exec $(TEST_SERVICE) ruff check . --no-cache --fix
+	# Also run the custom skill‑lint check for Japanese‑only SKILL.md files
+	$(DC) exec $(TEST_SERVICE) python scripts/check_skills.py
 
 # -------------------------------------------------
 # 補助タスク
