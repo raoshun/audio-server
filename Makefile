@@ -51,6 +51,7 @@ test:
 lint:
 	# Use the test service (read‑write mount) for linting so fixes can be applied.
 	# Disable ruff cache because the container file system may be read‑only in other services.
+	$(DC) up -d --build $(TEST_SERVICE)
 	$(DC) exec $(TEST_SERVICE) ruff check . --no-cache --fix
 
 # -------------------------------------------------
