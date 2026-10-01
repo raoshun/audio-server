@@ -1,27 +1,25 @@
-# Project Development Instructions
+# プロジェクト開発手順
 
-## Environment Policy
+## 環境ポリシー
 
-- Docker Compose is the canonical development environment.
-- Do not create or use a local Python virtual environment (venv).
-- Do not install Python packages on the host system.
-- Do not run pip install, uv pip install, or poetry install
-  on the host system.
-- Python commands must run inside the designated Docker container.
-- Use Docker Compose commands to build, run, test, and lint.
+- Docker Compose が標準的な開発環境である。
+- ローカルの Python バーチャル環境（venv）を作成しない・使用しない。
+- ホストシステムに Python パッケージをインストールしない。
+- ホストシステムで `pip install`、`uv pip install`、`poetry install` を実行しない。
+- Python コマンドは必ず指定された Docker コンテナ内で実行する。
+- ビルド・実行・テスト・Lint は Docker Compose コマンドで行う。
 
-## Required Workflow
+## 必須ワークフロー
 
-1. Inspect the existing Dockerfile and docker-compose.yaml.
-2. Identify the appropriate service for the task.
-3. Check the existing development and test commands.
-4. Execute commands inside the Docker environment.
-5. Verify changes using the project's existing test and lint commands.
+1. 既存の `Dockerfile` と `docker-compose.yaml` を確認する。
+2. タスクに適したサービスを確認する。
+3. 既存の開発・テストコマンドを確認する。
+4. Docker 環境内でコマンドを実行する。
+5. プロジェクトの既存のテスト・Lint コマンドで変更を検証する。
 
-## Restrictions
+## 制限
 
-- Do not modify Docker configuration unless explicitly requested.
-- Do not introduce alternative local development environments.
-- Do not create venv, .venv, or other host-side environment directories.
-- If the Docker environment is unavailable, report the issue
-  instead of switching to a host-side Python environment.
+- 明示的に指示されない限り、Docker 設定を変更しない。
+- 代替のローカル開発環境を導入しない。
+- venv、`.venv`、その他のホスト側環境ディレクトリを作成しない。
+- Docker 環境が利用できない場合は、ホスト側の Python 環境に切り替えず、問題を報告する。

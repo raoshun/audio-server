@@ -9,12 +9,21 @@ The script exits with status 1 on violations so it can be integrated into the
 ``make lint`` CI step.
 """
 
+import json
 import pathlib
 import re
 import sys
 
 
-def has_english(text: str) -> bool:
+def load_config():
+    config_path = pathlib.Path(".github/skills/lint_config.json")
+    if config_path.exists():
+        with config_path.open(encoding="utf-8") as f:
+            return json.load(f)
+    return {"allowed_words": [], "allowed_patterns": []}
+
+
+def has_english(text: str, config: dict) -> bool:
     """Return ``True`` if *text* contains disallowed Latin letters.
 
     Allowed exceptions (English may appear without triggering a lint error):
@@ -28,6 +37,8 @@ def has_english(text: str) -> bool:
       ``npm`` or ``node``) that appear at the start of a line, optionally
       preceded by whitespace.
     * Lines that are pure whitespace.
+    * Configured allowed words.
+    * Configured allowed patterns.
     """
     # Empty or whitespace‑only lines are never violations.
     if not text.strip():
@@ -60,11 +71,22 @@ def has_english(text: str) -> bool:
     if re.match(pattern, text):
         return False
 
+    # Allow configured words.
+    for word in config.get("allowed_words", []):
+        if word in text:
+            return False
+
+    # Allow configured patterns.
+    for pattern in config.get("allowed_patterns", []):
+        if re.search(pattern, text):
+            return False
+
     # Finally, detect any remaining Latin letters.
     return bool(re.search(r"[A-Za-z]", text))
 
 
 def main() -> int:
+    config = load_config()
     root = pathlib.Path(".")
     pattern = "**/.github/skills/**/SKILL.md"
     failed = False
@@ -72,8 +94,15 @@ def main() -> int:
         if not path.is_file():
             continue
         with path.open(encoding="utf-8") as f:
+            in_code_block = False
             for i, line in enumerate(f, start=1):
-                if has_english(line):
+                # Toggle code‑fence state and skip content inside ``` blocks.
+                if line.strip().startswith("```"):
+                    in_code_block = not in_code_block
+                    continue
+                if in_code_block:
+                    continue
+                if has_english(line, config):
                     print(
                         f"[skill‑lint] {path}:{i}: English text -> "
                         f"{line.rstrip()}"
