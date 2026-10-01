@@ -1,35 +1,34 @@
-# ruff: noqa
+import logging
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Request  # type: ignore
-from fastapi.staticfiles import StaticFiles  # type: ignore
-from pydantic import BaseModel, Field  # type: ignore
+import requests
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.app.config import Settings
 from backend.app.navidrome_client import NavidromeClient
 
-import logging
-import requests
-from fastapi.responses import StreamingResponse
-
-# Docker コンテナ内で stdout / stderr にログを出力するため、基本的なロギングを設定します。
+# Docker コンテナ内で stdout / stderr にログを出力するため、モジュールレベルのロギングを設定します。
 # これにより、現在 503 応答になるようなバリデーションやランタイムエラーが可視化されます。
 logging.basicConfig(level=logging.INFO)
 
 # Settings のロードをインポート時に試み、ValidationError が即座に記録されるようにします。
 # API はリクエストごとにも Settings を作成しますが、早期に可視化できるとデバッグが楽になります。
 # ValidationError は上記で BaseModel と Field をインポートしています。
+logger = logging.getLogger(__name__)
 
 try:
     _startup_settings = Settings()
     # 行長制限を超えないように設定情報をログ出力します。
-    logging.info(
+    logger.info(
         "[search_api] Settings loaded successfully: %s",
         _startup_settings,
     )
-except Exception as e:  # pragma: no cover - 実行時にハンドリング  # noqa: BLE001
-    logging.error("[search_api] Settings load error: %s", e)
+except ValidationError as e:  # pragma: no cover - 実行時にハンドリング
+    logger.error("[search_api] Settings load error: %s", e)
 
 
 class MusicSearchRequest(BaseModel):
@@ -52,16 +51,16 @@ app = FastAPI(title="DWE Music Search API")
 @app.post("/api/v1/search/music", response_model=MusicSearchResponse)
 async def search_music(payload: MusicSearchRequest):
     """Search music via Navidrome while forbidding local fallback."""
-    # Log entry and payload to verify that the endpoint is hit.
-    logging.info("[search_music] received payload: %s", payload.dict())
+    # エンドポイントが呼ばれたことを確認するため、ペイロードとともにログ出力します。
+    logger.info("[search_music] received payload: %s", payload.model_dump())
     try:
         client = get_client()
         response = await client.search_music(payload.query, payload.filters)
         return MusicSearchResponse(results=response.get("results", []))
     except Exception as exc:  # pragma: no cover - API behavior guard
-        # Log the exception details to aid debugging (captured in Docker logs).
-        # Use lazy formatting to avoid premature string interpolation.
-        logging.error("[search_music] error: %r", exc)
+        # デバッグを支援するため例外詳細をログ出力します（Docker ログに記録されます）。
+        # 遅延フォーマットを使用して、过早い文字列補間を避けます。
+        logger.error("[search_music] error: %r", exc)
         raise HTTPException(
             status_code=503,
             detail="service unavailable",
@@ -85,10 +84,9 @@ async def get_track_url(track_id: str):
     """
     client = get_client()
     base = client.base_url.rstrip('/')
-    # Access protected method of NavidromeClient to obtain auth params.
-    # Use public accessor to retrieve authentication parameters.
+    # 公開アクセサを使用して認証パラメータを取得します。
     auth_params = client.auth_params()
-    # Build query string with proper URL‑encoding.
+    # 適切な URL エンコードを使用してクエリ文字列を構築します。
     query = "&".join(f"{k}={quote(str(v))}" for k, v in auth_params.items())
     stream_url = f"{base}/rest/stream?id={track_id}&{query}"
     return {"stream_url": stream_url}
@@ -108,40 +106,21 @@ def proxy_track_stream(track_id: str, request: Request):
     content directly to the client, preserving the original ``Content-Type``
     (e.g., ``audio/flac``).
     """
-    # Forward relevant headers from the incoming FastAPI request.
+    # get_track_url と同じ URL を構築します。
     client = get_client()
-    # Build the same URL that ``get_track_url`` would produce.
     base = client.base_url.rstrip('/')
     auth_params = client.auth_params()
     query = "&".join(f"{k}={quote(str(v))}" for k, v in auth_params.items())
     stream_url = f"{base}/rest/stream?id={track_id}&{query}"
-    # Log the target stream URL for debugging.
-    # Log incoming request headers if available for debugging.
+    # 着リクエストのヘッダがあればログ出力します。
     if request:
-        logging.info(
+        logger.info(
             "[proxy_track_stream] incoming request headers: %s",
             dict(request.headers),
         )
-    logging.info("[proxy_track_stream] fetching %s", stream_url)
-    # Perform a streamed request to Navidrome.
-    # Include a reasonable timeout to avoid hanging indefinitely.
-    # Log the exact URL we are about to request for debugging purposes.
-    logging.info("[proxy_track_stream] final request URL: %s", stream_url)
-    # Some services (including Navidrome) reject requests that lack a typical
-    # User-Agent header, leading to a 404. We include a minimal UA to mimic a
-    # browser request.
-    # Include typical Accept header to satisfy Navidrome expectations.
-    # Navidrome may enforce strict header checks (e.g., Referer or Host).
-    # Include typical browser-like headers to satisfy those checks.
-    # Navidrome appears to identify the client by the User‑Agent header.
-    # The logs show successful streams with a client type "DWE-Proxy".
-    # Use that identifier and let ``requests`` set the Host automatically.
-    # Build headers mimicking a successful DWE‑Proxy client.
-    # Use the exact User-Agent string that was observed to succeed when calling
-    # Navidrome directly. Navidrome is strict about this header and will return
-    # a 404 for unknown agents.
-    # Navidrome enforces a realistic User-Agent header. Use a common browser UA
-    # string to avoid 404 responses caused by strict header validation.
+    logger.info("[proxy_track_stream] fetching %s", stream_url)
+    # Navidrome へストリームリクエストを送信します。長時間待機しないようタイムアウトを設定します。
+    # User-Agent ヘッダがないと Navidrome が 404 を返すため、ブラウザ類似の UA を含めます。
     custom_headers = {
         "User-Agent": (
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -149,39 +128,20 @@ def proxy_track_stream(track_id: str, request: Request):
         ),
         "Accept": "*/*",
         "Referer": f"{client.base_url}/",
-        # Some servers require an Origin header that matches the
-        # Referer header value.
+        # Referer と一致する Origin ヘッダを要求するサーバーがあります。
         "Origin": f"{client.base_url}",
     }
-    # Do NOT forward the incoming Host header; let ``requests`` set the
-    # correct Host based on the URL.
-    # Log the request headers to aid debugging of 404 responses.
-    logging.info("[proxy_track_stream] request headers: %s", custom_headers)
-    # Prepare request to log the exact headers being sent.
     session = requests.Session()
     req = requests.Request("GET", stream_url, headers=custom_headers)
     prepped = session.prepare_request(req)
-    logging.info("[proxy_track_stream] prepared request URL: %s", prepped.url)
-    logging.info(
-        "[proxy_track_stream] prepared request headers: %s",
-        prepped.headers,
-    )
-    resp = session.send(
-        prepped,
-        stream=True,
-        timeout=10,
-    )
-    logging.info(
-        "[proxy_track_stream] Navidrome response %s",
-        resp.status_code,
-    )
+    resp = session.send(prepped, stream=True, timeout=10)
     if resp.status_code != 200:
-        # Log a snippet of the response body for easier debugging.
+        # 応答本文のスニペットをログ出力してデバッグを容易にします。
         try:
             body_snippet = resp.text[:200]
-        except requests.RequestException:  # noqa: BLE001
+        except requests.RequestException:
             body_snippet = "<unable to read body>"
-        logging.error(
+        logger.error(
             "[proxy_track_stream] unexpected status %s, body snippet: %s",
             resp.status_code,
             body_snippet,
@@ -210,13 +170,10 @@ async def list_all_tracks():
     """
     try:
         client = get_client()
-        # Log settings values for debugging authentication issues.
-        # Use the public attribute from the client settings for the username.
-        # The dummy test client may not have the full Settings attribute used
-        # by the real Navidrome client. Use ``getattr`` with sensible
-        # fall‑backs so the log statement never raises an ``AttributeError``
-        # during tests.
-        logging.info(
+        # 認証問題のデバッグのため設定値をログ出力します。
+        # ダミーのテストクライアントは本物の Navidrome クライアントが使う全設定属性を持たないため、
+        # getattr に適切なフォールバックを渡し、テスト中に AttributeError が発生しないようにします。
+        logger.info(
             "[list_all_tracks] Settings: user=%s, timeout=%s",
             getattr(
                 getattr(client, "settings", None),
@@ -225,20 +182,19 @@ async def list_all_tracks():
             ),
             getattr(client, "timeout", "<no timeout>"),
         )
-        # Prefer the explicit ``get_all_tracks`` method, which queries the
-        # Navidrome ``/rest/search2`` endpoint with a wildcard.
-        # The test suite provides a dummy client that only implements
-        # ``search_music``; in that case we fall back to the wildcard search
-        # that historically returned all tracks.
+        # Navidrome の ``/rest/search2`` エンドポイントにワイルドカードを付けて照会する、
+        # 明示的な ``get_all_tracks`` メソッドを優先します。
+        # テストスイートは ``search_music`` のみを実装するダミークライアントを提供するため、
+        # その場合はかつて全トラックを返したワイルドカード検索にフォールバックします。
         try:
             response = await client.get_all_tracks()
         except AttributeError:
-            # Compatibility fallback for clients lacking ``get_all_tracks``.
+            # ``get_all_tracks`` が実装されていないクライアント用の相互互換フォールバック。
             response = await client.search_music("*", None)
-        # Ensure the dict contains a ``results`` list.
+        # 辞書に ``results`` リストが含まれるようにします。
         return {"results": response.get("results", [])}
-    except Exception as exc:  # pragma: no cover - defensive
-        logging.error("[list_all_tracks] error: %r", exc)
+    except Exception as exc:  # pragma: no cover - 防御的
+        logger.error("[list_all_tracks] error: %r", exc)
         raise HTTPException(
             status_code=503,
             detail="service unavailable",
