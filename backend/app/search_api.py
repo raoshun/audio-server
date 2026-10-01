@@ -59,7 +59,7 @@ async def search_music(payload: MusicSearchRequest):
         return MusicSearchResponse(results=response.get("results", []))
     except Exception as exc:  # pragma: no cover - API behavior guard
         # デバッグを支援するため例外詳細をログ出力します（Docker ログに記録されます）。
-        # 遅延フォーマットを使用して、过早い文字列補間を避けます。
+        # 遅延フォーマットを使用して、早期の文字列補間を避けます。
         logger.error("[search_music] error: %r", exc)
         raise HTTPException(
             status_code=503,
