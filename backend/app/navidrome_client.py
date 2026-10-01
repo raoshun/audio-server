@@ -5,6 +5,7 @@ import urllib.error
 # 依存関係を増やさないため、組み込み urllib を使用して HTTP リクエストを行います。
 import urllib.request
 import xml.etree.ElementTree as ET
+from typing import Any
 from urllib.parse import quote, urlencode
 
 # 兄弟パッケージ ``app`` から Settings をインポートします。
@@ -53,7 +54,7 @@ class NavidromeClient:
         params: dict | None = None,
     ) -> ET.Element:
         """GET で Subsonic XML を取得し Element に変換するヘルパー。"""
-        query_dict: dict = self._auth_params()
+        query_dict: dict = self.auth_params()
         if params:
             query_dict.update(params)
         query = urlencode(query_dict, safe="*", quote_via=quote)
@@ -140,30 +141,37 @@ class NavidromeClient:
     async def search_music(
         self,
         query: str,
-        filters: dict | None = None,
-    ) -> dict:
-        """自然言語プロンプトにマッチする音楽を Navidrome で検索します。"""
-        params = {"query": query}
-        if filters:
-            params.update(filters)
-        # Subsonic の検索 – 最近の Navidrome バージョンでサポートされている newer
-        # ``/rest/search2`` エンドポイントを使用します。古い ``/rest/search``
-        # は本環境では HTTP 410 (Gone) が返ります。
-        # リクエストを実行し、XML のルート要素を取得します。
-        root = await self._get_xml("/rest/search2", params)
+        filters: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Search for songs in Navidrome matching the query.
 
-        # Navidrome が返す XML にはタグ名に名前空間が付くことがあります
-        # (例: ``{http://subsonic.org/restapi}artist``)。 ``root.iter("artist")``
-        # のみでは要素が取得できず、結果が空になるか期待と異なる形状で例外が
-        # 発生します。名前空間を考慮しつつローカルタグ名 (``}`` 後) を比較して
-        # 要素を抽出します。
-        results: list[dict[str, str | None]] = []
-        for el in root.iter():
-            if el.tag.split('}')[-1] == "artist":
-                results.append({
-                    "id": el.attrib.get("id"),
-                    "name": el.attrib.get("name"),
-                })
+        Returns song-shaped results ``{id, title, artist}`` so that the
+        frontend can display the title and stream the track id directly.
+        Local fallback to the DWE music directory is intentionally disabled.
+        """
+        query_dict: dict[str, str] = {
+            "query": query,
+            "type": "track",
+            "artist": (filters or {}).get("artist", ""),
+        }
+        query_dict = {k: v for k, v in query_dict.items() if v}
+        # Query is required by the backend.
+        query_dict["query"] = query
+        root = await self._get_xml("/rest/search2", query_dict)
+        # Match song elements by local tag name regardless of namespace.
+        songs = [
+            el for el in root.iter()
+            if el.tag.split("}")[-1] == "song"
+        ]
+        # Build song-shaped results that match the frontend contract.
+        results = [
+            {
+                "id": el.attrib.get("id"),
+                "title": el.attrib.get("title"),
+                "artist": el.attrib.get("artist"),
+            }
+            for el in songs
+        ]
         return {"results": results}
 
     async def get_all_tracks(self) -> dict:
