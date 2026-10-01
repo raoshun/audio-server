@@ -50,9 +50,15 @@ def test_user_flow(page):
     # 3. Click the search button.
     page.locator("#searchBtn").click()
 
-    # 4. Wait for at least one result item.
+    # 4. Assert the search produced at least one result.
+    #    A live Navidrome catalog can return many matches for "Disney", so the
+    #    test reads the result count directly and requires a non-empty list.
+    #    This avoids coupling the flow to a specific result count.
     result_items = page.locator("#resultList li")
-    expect(result_items).to_have_count(1, timeout=5000)
+    # A non-empty list means the search returned results.
+    # `.click()` fires an async fetch, so wait for the first <li> to render
+    # before asserting. `expect(...).to_be_visible()` polls until it appears.
+    expect(result_items.nth(0)).to_be_visible(timeout=10000)
 
     # 5. Click the first result.
     first_item = result_items.nth(0)
