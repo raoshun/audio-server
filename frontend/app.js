@@ -2,7 +2,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const queryInput = document.getElementById('query');
     const searchBtn = document.getElementById('searchBtn');
     const listAllBtn = document.getElementById('listAllBtn');
+    const albumListBtn = document.getElementById('albumListBtn');
     const resultList = document.getElementById('resultList');
+    const albumList = document.getElementById('albumList');
+    const albumTracksSection = document.getElementById('albumTracksSection');
+    const albumTracksList = document.getElementById('albumTracksList');
+    const modeSelect = document.getElementById('modeSelect');
     const playerSection = document.querySelector('.player');
     const audioPlayer = document.getElementById('player');
 
@@ -34,6 +39,119 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    // アルバム一覧を描画する。項目をクリックするとそのアルバムのトラック一覧を取得する。
+    const renderAlbums = (items) => {
+        albumList.innerHTML = '';
+        items.forEach(album => {
+            const li = document.createElement('li');
+            li.textContent = `${album.title} — ${album.artist}`;
+            li.dataset.id = album.id;
+            li.style.cursor = 'pointer';
+            li.addEventListener('click', async () => {
+                try {
+                    await openAlbum(album.id);
+                } catch (e) {
+                    alert('アルバムを開けませんでした');
+                }
+            });
+            albumList.appendChild(li);
+        });
+    };
+
+    // アルバムを選択すると、そのトラック一覧を取得してトラックリストと再生モードを表示する。
+    async function openAlbum(albumId) {
+        albumTracksList.innerHTML = '';
+        albumTracksSection.style.display = 'none';
+        queue = [];
+        try {
+            const resp = await fetch(`/api/v1/albums/${albumId}`);
+            if (!resp.ok) {
+                alert('アルバムを取れませんでした');
+                return;
+            }
+            const data = await resp.json();
+            const tracks = data.tracks || [];
+            if (tracks.length === 0) {
+                albumTracksSection.style.display = 'none';
+                return;
+            }
+            albumTracksSection.style.display = 'block';
+            modeSelect.style.display = 'inline-block';
+            tracks.forEach(track => {
+                const li = document.createElement('li');
+                li.textContent = `${track.title}`;
+                li.dataset.id = track.id;
+                li.style.cursor = 'pointer';
+                li.addEventListener('click', () => {
+                    playTrack(track.id);
+                });
+                albumTracksList.appendChild(li);
+            });
+        } catch (e) {
+            albumTracksSection.style.display = 'none';
+            alert('アルバムを開けませんでした');
+        }
+    }
+
+    // アルバムのトラックを順再生する（トラックリストの先頭から順番に再生する）。
+    function playAlbumSequential() {
+        const ordered = Array.from(albumTracksList.querySelectorAll('li'))
+            .map(li => li.dataset.id)
+            .filter(x => typeof x === 'string');
+        queue = ordered;
+        playNext();
+    }
+
+    // アルバムのトラックをランダム再生する（シャッフル後に先頭から再生する）。
+    function playAlbumShuffle() {
+        const ids = Array.from(albumTracksList.querySelectorAll('li'))
+            .map(li => li.dataset.id)
+            .filter(x => typeof x === 'string');
+        if (ids.length === 0) {
+            return;
+        }
+        // Fisher-Yates シャッフルで再生順序を乱す。
+        for (let i = ids.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [ids[i], ids[j]] = [ids[j], ids[i]];
+        }
+        queue = ids;
+        playNext();
+    }
+
+    // キューの先頭のトラックを再生する。トラックが終了したら次のトラックへ進む。
+    function playNext() {
+        if (!queue || queue.length === 0) {
+            return;
+        }
+        const id = queue.shift();
+        audioPlayer.src = `/api/v1/track/stream/${id}`;
+        audioPlayer.load();
+        playerSection.style.display = 'block';
+        highlightActive(id);
+        audioPlayer.play();
+    }
+
+    // 再生中のトラックをトラックリストにハイライトする。
+    function highlightActive(id) {
+        albumTracksList.querySelectorAll('li').forEach(li => {
+            if (li.dataset.id === id) {
+                li.classList.add('active');
+            } else {
+                li.classList.remove('active');
+            }
+        });
+    }
+
+    // 曲を1曲だけ再生する。
+    function playTrack(id) {
+        audioPlayer.src = `/api/v1/track/stream/${id}`;
+        audioPlayer.load();
+        playerSection.style.display = 'block';
+        highlightActive(id);
+        audioPlayer.play();
+    }
+
     const performSearch = async () => {
         const query = queryInput.value.trim();
         if (!query) return;
@@ -52,10 +170,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     searchBtn.addEventListener('click', performSearch);
     listAllBtn.addEventListener('click', fetchAllTracks);
+    albumListBtn.addEventListener('click', fetchAlbums);
+    modeSelect.addEventListener('change', (e) => {
+        if (e.target.value === 'shuffle') {
+            playAlbumShuffle();
+        } else {
+            playAlbumSequential();
+        }
+    });
     queryInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') performSearch();
     });
+    // 現在のトラックが終了したら、キューがあれば次のトラックへ進む。
+    audioPlayer.addEventListener('ended', () => {
+        if (queue.length > 0) {
+            playNext();
+        }
+    });
 
+    // 全曲一覧を取得する。
     async function fetchAllTracks() {
         try {
             const resp = await fetch('/api/v1/tracks');
@@ -63,6 +196,17 @@ document.addEventListener('DOMContentLoaded', () => {
             renderResults(data.results);
         } catch (e) {
             alert('全曲一覧の取得に失敗しました');
+        }
+    }
+
+    // アルバム一覧を取得する。
+    async function fetchAlbums() {
+        try {
+            const resp = await fetch('/api/v1/albums');
+            const data = await resp.json();
+            renderAlbums(data.albums || []);
+        } catch (e) {
+            alert('アルバム一覧の取得に失敗しました');
         }
     }
 });

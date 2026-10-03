@@ -15,6 +15,17 @@
             <input type="text" id="query" placeholder="曲名やアーティストを入力" />
             <button id="searchBtn">検索</button>
             <button id="listAllBtn">全曲一覧</button>
+            <button id="albumListBtn">アルバム一覧</button>
+        </section>
+        <section class="albums">
+            <ul id="albumList"></ul>
+        </section>
+        <section id="albumTracksSection" class="album-tracks">
+            <select id="modeSelect" style="display:none;">
+                <option value="sequential">順再生</option>
+                <option value="shuffle">ランダム再生</option>
+            </select>
+            <ul id="albumTracksList"></ul>
         </section>
         <section class="results">
             <ul id="resultList"></ul>

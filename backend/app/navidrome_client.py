@@ -138,6 +138,30 @@ class NavidromeClient:
                     return json.load(response)
             return await asyncio.to_thread(_fetch_json)
 
+    async def get_album_tracks(self, album_id: str) -> dict:
+        """アルバムIDから収録トラック一覧を取得する。
+
+        Subsonic の ``getAlbumById`` を利用し、アルバムに収録された全トラックを
+        ``{id, title, artist, album, albumId}`` 形式で返す。ローカルの音楽
+        ディレクトリへはフォールバックしない。
+        """
+        root = await self._get_xml(
+            "/rest/getAlbumById", {"id": album_id},
+        )
+        # <track> 要素を全走査し、アルバムIDを含むトラック一覧を構築する。
+        # タグには名前空間が付くことがあるためローカルタグ名で比較する。
+        tracks: list[dict[str, str | None]] = []
+        for el in root.iter():
+            if el.tag.split("}")[-1] == "track":
+                tracks.append({
+                    "id": el.attrib.get("id"),
+                    "title": el.attrib.get("title"),
+                    "artist": el.attrib.get("artist"),
+                    "album": el.attrib.get("album"),
+                    "albumId": el.attrib.get("albumId"),
+                })
+        return {"album_id": album_id, "tracks": tracks}
+
     async def search_music(
         self,
         query: str,

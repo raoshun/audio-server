@@ -200,6 +200,64 @@ async def list_all_tracks():
             detail="service unavailable",
         ) from exc
 
+
+# ---------------------------------------------------------------------------
+# Album listing + album-detail endpoints (Navidrome-only data source)
+# ---------------------------------------------------------------------------
+
+
+class AlbumListResponse(BaseModel):
+    albums: list[dict[str, Any]]
+
+
+class AlbumDetailResponse(BaseModel):
+    album_id: str
+    tracks: list[dict[str, Any]]
+
+
+@app.get("/api/v1/albums", response_model=AlbumListResponse)
+async def list_albums():
+    """Return the album list from Navidrome.
+
+    The album list is fetched from the ``list_albums`` Navidrome client
+    method (``/rest/getAlbums``). Local directory fallback is
+    intentionally disabled.
+    """
+    try:
+        client = get_client()
+        response = await client.list_albums()
+        return AlbumListResponse(albums=response.get("albums", []))
+    except Exception as exc:  # pragma: no cover - 防御的
+        logger.error("[list_albums] error: %r", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="service unavailable",
+        ) from exc
+
+
+@app.get("/api/v1/albums/{album_id}", response_model=AlbumDetailResponse)
+async def get_album_detail(album_id: str):
+    """Return the tracks contained in a single album.
+
+    The album detail is fetched from the ``get_album_tracks`` Navidrome
+    client method (``/rest/getAlbumById``). Local directory fallback is
+    intentionally disabled.
+    """
+    try:
+        client = get_client()
+        response = await client.get_album_tracks(album_id)
+        return AlbumDetailResponse(
+            album_id=response.get("album_id", album_id),
+            tracks=response.get("tracks", []),
+        )
+    except Exception as exc:  # pragma: no cover - 防御的
+        logger.error("[get_album_detail] error: %r", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="service unavailable",
+        ) from exc
+
+
 # ---------------------------------------------------------------------------
 # Frontend static files
 # ---------------------------------------------------------------------------

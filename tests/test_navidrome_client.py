@@ -1,3 +1,4 @@
+import inspect
 import urllib.request
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -241,3 +242,48 @@ async def test_get_all_tracks_song_results(
     assert "query=*" in captured["url"]
     assert "type=track" in captured["url"]
     assert "size=1000" in captured["url"]
+
+
+@pytest.mark.asyncio
+async def test_get_album_tracks_returns_track_results(
+    settings_fixture, monkeypatch,
+):
+    """``get_album_tracks`` は ``getAlbumById`` から ``<track>`` 要素を取得する。
+
+    Returns ``{id, title, artist, album, albumId}`` entries for each track
+    in the album. Local directory fallback is intentionally disabled.
+    """
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<response xmlns="http://subsonic.org/restapi">'
+        '<album id="al42">'
+        '<track id="s1" title="Song One" artist="Artist One" album="Album One" albumId="al42"/>'
+        '<track id="s2" title="Song Two" artist="Artist One" album="Album One" albumId="al42"/>'
+        "</album>"
+        "</response>"
+    )
+    assert inspect.iscoroutinefunction(NavidromeClient.get_album_tracks)
+    client = NavidromeClient(settings_fixture)
+    client.base_url = "http://example.com"
+    captured: dict[str, str] = {}
+
+    def fake_urlopen(url, timeout=None):
+        captured["url"] = url
+        return _FakeResponse(xml)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    result = await client.get_album_tracks("al42")
+
+    tracks = result["tracks"]
+    assert len(tracks) == 2
+    assert tracks[0] == {
+        "id": "s1",
+        "title": "Song One",
+        "artist": "Artist One",
+        "album": "Album One",
+        "albumId": "al42",
+    }
+    # getAlbumById がクエリに含まれているか検証する。
+    assert "getAlbumById" in captured["url"]
+    assert "id=al42" in captured["url"]
