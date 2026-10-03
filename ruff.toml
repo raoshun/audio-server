@@ -1,0 +1,11 @@
+# Ruff configuration
+# Uses ruff as the single Python linter and formatter.
+
+line-length = 120
+target-version = "py312"
+
+[lint]
+# E501（行長）は日本語コメント行での誤検出を避けるため対象外。ruff format
+# で行長管理を行う。
+select = ["E3", "E4", "E7", "E9", "F", "W"]
+

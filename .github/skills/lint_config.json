@@ -2,14 +2,14 @@
   "allowed_words": [
     "MinIO", "Navidrome", "DWE", "FLAC", "API", "JSON", "HTTP", "URL", "README", 
     "Makefile", "Dockerfile", "Docker", "Git", "LLM", "IAM", "PEP8", "Bash", 
-    "Shell", "Master Store", "Read-Only", "Write-Once", "Read-On-ly Principle",
-    "Security & Architecture", "Style & Structure", "Low (Note)", "Deprecated",
-    "Linter Output Parsing", "Reference Skills", "Error handling", "Python", 
+    "Shell", "Master", "Store", "Read", "Write", "Once", "Only", "Principle",
+    "Security", "Architecture", "Style", "Structure", "Low (Note)", "Deprecated",
+    "Linter", "Output", "Parsing", "Reference", "Skills", "Error", "handling", "Python",
     "SQL", "SQLite", "FTS5", "DB", "CLI", "STDERR", "MVP", "FastAPI", "Flask", 
     "Elasticsearch", "import", "asyncio", "print", "from", "def", "class", "if", 
     "return", "await", "as", "in", "is", "not", "or", "and", "None", "True", "False",
     "YAML", "Compose", "Container", "Service", "Volume", "Network", "Environment",
-    "rejected", "Local clone"
+    "rejected", "Local", "clone"
   ],
   "allowed_patterns": [
     "^\\s*[a-zA-Z0-9_-]+:\\s*",

@@ -1,7 +1,7 @@
 """Policy Linter
 =======================
 
-This script enforces the coding and security policies defined in 
+This script enforces the coding and security policies defined in
 `.github/skills/common-coding-rules/SKILL.md`.
 
 It checks for:
@@ -45,6 +45,7 @@ JAPANESE_PATTERN = re.compile(r"[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]")
 
 # --- Implementation ---
 
+
 class PolicyLinter:
     def __init__(self, root_dir="."):
         self.root_dir = pathlib.Path(root_dir)
@@ -69,11 +70,13 @@ class PolicyLinter:
         for i, line in enumerate(lines, start=1):
             # Check for Secrets (HIGH)
             if SECRET_PATTERN.search(line):
-                self.report("HIGH", file_path, i, "Potential plaintext secret.")
+                self.report(
+                    "HIGH", file_path, i, "Potential plaintext secret."
+                )
 
             # Check for MinIO direct write (CRITICAL)
             if MINIO_WRITE_PATTERN.search(line):
-                # Note: In a real scenario, we'd check if it's bypassing the approved client.
+                # Note: A real check would verify the approved client was used.
                 self.report(
                     "CRITICAL", file_path, i,
                     "Direct MinIO write attempt detected."
@@ -86,13 +89,18 @@ class PolicyLinter:
                 if not JAPANESE_PATTERN.search(prev_line) and "#" in prev_line:
                     self.report(
                         "MEDIUM", file_path, i,
-                        "API call detected without a Japanese descriptive comment."
+                        "API call detected without a Japanese "
+                        "descriptive comment."
                     )
-                elif not JAPANESE_PATTERN.search(prev_line) and "#" not in prev_line:
-                    # If no comment at all, it's also a concern for documentation.
+                elif (
+                    not JAPANESE_PATTERN.search(prev_line)
+                    and "#" not in prev_line
+                ):
+                    # If no comment at all, documentation is also a concern.
                     self.report(
                         "MEDIUM", file_path, i,
-                        "API call detected. Please add a Japanese descriptive comment."
+                        "API call detected. Please add a Japanese "
+                        "descriptive comment."
                     )
 
     def run(self):
@@ -106,7 +114,7 @@ class PolicyLinter:
             print("\n❌ CRITICAL ERRORS FOUND:")
             for err in self.errors:
                 print(err)
-        
+
         if self.warnings:
             print("\n⚠️ WARNINGS FOUND:")
             for warn in self.warnings:
