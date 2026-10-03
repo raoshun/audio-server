@@ -1,3 +1,8 @@
+---
+name: common-coding-rules
+description: "DWE Home Audio Serverプロジェクトの全コードベース（Python, Shell, Dockerfile等）におけるコーディング標準、セキュリティポリシー、日本語品質、Issue中心のワークフローを規定する唯一の権威ルールブック。"
+---
+
 # 共通コーディング規則スキル (Common Coding Rules)
 
 ## 📚 目的と適用範囲

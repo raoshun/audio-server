@@ -1,3 +1,8 @@
+---
+name: dwe-lyrics-transcriber
+description: "DWE 音楽サーバーへ、FLAC 音源から faster-whisper で英語音声を文字起こしし、Navidrome が認識できる .lrc 歌詞ファイルを生成する Docker 歌詞トランスクリプションサービスのドキュメントと作業フロー。"
+---
+
 # DWE 歌詞トランスクリプション Docker 実装仕様
 
 ## 1. 目的
