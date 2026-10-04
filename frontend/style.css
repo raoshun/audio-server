@@ -63,6 +63,25 @@ header h1 {
     margin: 0;
 }
 
+.album-tracks .mode-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.album-tracks .mode-btn {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f0f0f0;
+    cursor: pointer;
+}
+
+.album-tracks .mode-btn:hover {
+    background: #e0e7ff;
+}
+
 .album-tracks li {
     padding: 0.5rem;
     border-bottom: 1px solid #ddd;

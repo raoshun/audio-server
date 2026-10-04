@@ -1,3 +1,6 @@
+// 再生キュー（順再生/ランダム再生中の次曲リスト）。明示的に宣言する。
+let queue = [];
+
 document.addEventListener('DOMContentLoaded', () => {
     const queryInput = document.getElementById('query');
     const searchBtn = document.getElementById('searchBtn');
@@ -7,7 +10,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const albumList = document.getElementById('albumList');
     const albumTracksSection = document.getElementById('albumTracksSection');
     const albumTracksList = document.getElementById('albumTracksList');
-    const modeSelect = document.getElementById('modeSelect');
+    const playSequentialBtn = document.getElementById('playSequentialBtn');
+    const playShuffleBtn = document.getElementById('playShuffleBtn');
     const playerSection = document.querySelector('.player');
     const audioPlayer = document.getElementById('player');
 
@@ -76,7 +80,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             albumTracksSection.style.display = 'block';
-            modeSelect.style.display = 'inline-block';
+            playSequentialBtn.style.display = 'inline-block';
+            playShuffleBtn.style.display = 'inline-block';
             tracks.forEach(track => {
                 const li = document.createElement('li');
                 li.textContent = `${track.title}`;
@@ -125,11 +130,15 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const id = queue.shift();
-        audioPlayer.src = `/api/v1/track/stream/${id}`;
-        audioPlayer.load();
-        playerSection.style.display = 'block';
-        highlightActive(id);
-        audioPlayer.play();
+        try {
+            audioPlayer.src = `/api/v1/track/stream/${id}`;
+            audioPlayer.load();
+            playerSection.style.display = 'block';
+            highlightActive(id);
+            audioPlayer.play();
+        } catch (e) {
+            alert('再生に失敗しました');
+        }
     }
 
     // 再生中のトラックをトラックリストにハイライトする。
@@ -145,11 +154,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 曲を1曲だけ再生する。
     function playTrack(id) {
-        audioPlayer.src = `/api/v1/track/stream/${id}`;
-        audioPlayer.load();
-        playerSection.style.display = 'block';
-        highlightActive(id);
-        audioPlayer.play();
+        try {
+            audioPlayer.src = `/api/v1/track/stream/${id}`;
+            audioPlayer.load();
+            playerSection.style.display = 'block';
+            highlightActive(id);
+            audioPlayer.play();
+        } catch (e) {
+            alert('再生に失敗しました');
+        }
     }
 
     const performSearch = async () => {
@@ -171,12 +184,11 @@ document.addEventListener('DOMContentLoaded', () => {
     searchBtn.addEventListener('click', performSearch);
     listAllBtn.addEventListener('click', fetchAllTracks);
     albumListBtn.addEventListener('click', fetchAlbums);
-    modeSelect.addEventListener('change', (e) => {
-        if (e.target.value === 'shuffle') {
-            playAlbumShuffle();
-        } else {
-            playAlbumSequential();
-        }
+    playSequentialBtn.addEventListener('click', () => {
+        playAlbumSequential();
+    });
+    playShuffleBtn.addEventListener('click', () => {
+        playAlbumShuffle();
     });
     queryInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') performSearch();

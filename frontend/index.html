@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DWE 曲再生</title>
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/style.css?v=1" />
 </head>
 <body>
     <header>
@@ -21,10 +21,10 @@
             <ul id="albumList"></ul>
         </section>
         <section id="albumTracksSection" class="album-tracks">
-            <select id="modeSelect" style="display:none;">
-                <option value="sequential">順再生</option>
-                <option value="shuffle">ランダム再生</option>
-            </select>
+            <div class="mode-buttons">
+                <button id="playSequentialBtn" type="button" class="mode-btn">順再生</button>
+                <button id="playShuffleBtn" type="button" class="mode-btn">ランダム再生</button>
+            </div>
             <ul id="albumTracksList"></ul>
         </section>
         <section class="results">
@@ -34,6 +34,6 @@
             <audio id="player" controls></audio>
         </section>
     </main>
-    <script src="/app.js"></script>
+    <script src="/app.js?v=2"></script>
 </body>
 </html>
