@@ -261,14 +261,17 @@ async def get_album_detail(album_id: str):
 # ---------------------------------------------------------------------------
 # Frontend static files
 # ---------------------------------------------------------------------------
-# Serve UI static files from the frontend directory inside the container.
-# This mount is placed after API routes so that the API endpoints are matched
-# before the static file fallback.
+# Serve UI static files from the frontend/dist directory inside the container.
+# The frontend is built with Vite (node image, frontend/Dockerfile) and the
+# build output is placed in frontend/dist. This mount is placed after API routes
+# so that the API endpoints are matched before the static file fallback.
 # FastAPI checks routes first, then falls back to mounted applications, but
 # moving the mount clarifies intent and avoids potential path‑resolution
 # edge cases in testing environments.
+# NOTE: frontend/dist must be built before the backend starts (e.g. via
+# `docker compose build frontend` or `npm run build` in frontend/).
 app.mount(
     "/",
-    StaticFiles(directory="/app/frontend", html=True),
+    StaticFiles(directory="/app/frontend/dist", html=True),
     name="frontend",
 )
