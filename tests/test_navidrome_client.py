@@ -1,6 +1,6 @@
+import inspect
 import urllib.request
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import SecretStr
@@ -23,37 +23,46 @@ def settings_fixture():
 
 
 @pytest.mark.asyncio
-async def test_list_albums_returns_json(settings_fixture):
-    """Ensure ``list_albums`` performs a GET request and returns the parsed
-    JSON.
+async def test_list_albums_returns_json(settings_fixture, monkeypatch):
+    """``list_albums`` は ``search3`` の ``album`` フィルタでアルバム一覧を返す。
 
-    The aiohttp ``ClientSession`` is patched to return a controlled response.
+    ``getAlbums`` 端点は 404 を返すため実装は ``search3`` を使う。返り値は
+    ``{id, title, artist}`` 形式の辞書をまとめた ``{"albums": [...]}``。
     """
-    expected = {"albums": ["a1", "a2"]}
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<response xmlns="http://subsonic.org/restapi">'
+        '<album id="album-1" name="Album One" artist="Artist One"/>'
+        '<album id="album-2" name="Album Two" artist="Artist Two"/>'
+        "</response>"
+    )
 
-    # Create an async mock for the response object.
-    mock_resp = AsyncMock()
-    # Make the mock response work with "async with".
-    mock_resp.__aenter__.return_value = mock_resp
-    mock_resp.__aexit__.return_value = None
-    mock_resp.raise_for_status.return_value = None
-    mock_resp.json.return_value = expected
+    client = NavidromeClient(settings_fixture)
+    client.dwe_artist = "Disney's World of English"
+    client.base_url = "http://example.com"
+    captured: dict[str, str] = {}
 
-    # ``ClientSession`` is used as an async context manager; we mock both
-    # the ``__aenter__`` returning an object with a ``get`` method that
-    # returns the mock response directly.
-    mock_session = AsyncMock()
-    mock_session.__aenter__.return_value = mock_session
-    mock_session.get.return_value = mock_resp
+    def fake_urlopen(url, timeout=None):
+        captured["url"] = url
+        return _FakeResponse(xml)
 
-    with patch(
-        "backend.app.navidrome_client.ClientSession",
-        return_value=mock_session,
-    ):
-        client = NavidromeClient(settings_fixture)
-        result = await client.list_albums()
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
-        assert result == expected
+    result = await client.list_albums()
+
+    albums = result["albums"]
+    assert len(albums) == 2
+    assert albums[0] == {
+        "id": "album-1",
+        "title": "Album One",
+        "artist": "Artist One",
+    }
+    assert albums[1]["id"] == "album-2"
+    assert albums[1]["title"] == "Album Two"
+    # search3 の album フィルタが含まれているか検証する。
+    assert "search3" in captured["url"]
+    assert "album=" in captured["url"]
+    assert "Disney" in captured["url"]
 
 
 # ---------------------------------------------------------------------------
@@ -241,3 +250,53 @@ async def test_get_all_tracks_song_results(
     assert "query=*" in captured["url"]
     assert "type=track" in captured["url"]
     assert "size=1000" in captured["url"]
+
+
+@pytest.mark.asyncio
+async def test_get_album_tracks_returns_track_results(
+    settings_fixture, monkeypatch,
+):
+    """``get_album_tracks`` は ``search3`` の名前クエリで ``<song>`` 要素を取得する。
+
+    Subsonic の ``getAlbumById`` 端点が 404 を返すため、実装はアルバム名による
+    ``search3`` 名前クエリを使い、``<song>`` の ``parent`` 属性でアルバムを
+    フィルタする。返り値は ``{id, title, artist, album, albumId}`` 形式の辞書。
+    """
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<response xmlns="http://subsonic.org/restapi">'
+        '><album id="al42" name="Album One" artist="Artist One"/>'
+        '<song id="s1" title="Song One" artist="Artist One" parent="al42" album="Album One"/>'
+        '<song id="s2" title="Song Two" artist="Artist One" parent="al42" album="Album One"/>'
+        '<song id="s3" title="Other Song" artist="Artist Two" parent="al99" album="Album Two"/>'
+        "</response>"
+    )
+    assert inspect.iscoroutinefunction(NavidromeClient.get_album_tracks)
+    client = NavidromeClient(settings_fixture)
+    client.base_url = "http://example.com"
+    captured: dict[str, str] = {}
+
+    def fake_urlopen(url, timeout=None):
+        captured["url"] = url
+        return _FakeResponse(xml)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    result = await client.get_album_tracks("al42")
+
+    tracks = result["tracks"]
+    assert len(tracks) == 2
+    assert tracks[0] == {
+        "id": "s1",
+        "title": "Song One",
+        "artist": "Artist One",
+        "album": "Album One",
+        "albumId": "al42",
+    }
+    # 別アルバムの曲はフィルターで除外される。
+    assert all(t["albumId"] == "al42" for t in tracks)
+    # アルバム名による search3 クエリと type=track が付いているか验证する。
+    # captured は最終 urlopen を持つため、get_album_tracks が呼ぶ search3 分岐が対象。
+    assert "search3" in captured["url"]
+    assert "query=Album%20One" in captured["url"]
+    assert "type=track" in captured["url"]

@@ -200,17 +200,78 @@ async def list_all_tracks():
             detail="service unavailable",
         ) from exc
 
+
+# ---------------------------------------------------------------------------
+# Album listing + album-detail endpoints (Navidrome-only data source)
+# ---------------------------------------------------------------------------
+
+
+class AlbumListResponse(BaseModel):
+    albums: list[dict[str, Any]]
+
+
+class AlbumDetailResponse(BaseModel):
+    album_id: str
+    tracks: list[dict[str, Any]]
+
+
+@app.get("/api/v1/albums", response_model=AlbumListResponse)
+async def list_albums():
+    """Return the album list from Navidrome.
+
+    The album list is fetched from the ``list_albums`` Navidrome client
+    method (``/rest/getAlbums``). Local directory fallback is
+    intentionally disabled.
+    """
+    try:
+        client = get_client()
+        response = await client.list_albums()
+        return AlbumListResponse(albums=response.get("albums", []))
+    except Exception as exc:  # pragma: no cover - 防御的
+        logger.error("[list_albums] error: %r", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="service unavailable",
+        ) from exc
+
+
+@app.get("/api/v1/albums/{album_id}", response_model=AlbumDetailResponse)
+async def get_album_detail(album_id: str):
+    """Return the tracks contained in a single album.
+
+    The album detail is fetched from the ``get_album_tracks`` Navidrome
+    client method (``/rest/getAlbumById``). Local directory fallback is
+    intentionally disabled.
+    """
+    try:
+        client = get_client()
+        response = await client.get_album_tracks(album_id)
+        return AlbumDetailResponse(
+            album_id=response.get("album_id", album_id),
+            tracks=response.get("tracks", []),
+        )
+    except Exception as exc:  # pragma: no cover - 防御的
+        logger.error("[get_album_detail] error: %r", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="service unavailable",
+        ) from exc
+
+
 # ---------------------------------------------------------------------------
 # Frontend static files
 # ---------------------------------------------------------------------------
-# Serve UI static files from the frontend directory inside the container.
-# This mount is placed after API routes so that the API endpoints are matched
-# before the static file fallback.
+# Serve UI static files from the frontend/dist directory inside the container.
+# The frontend is built with Vite (node image, frontend/Dockerfile) and the
+# build output is placed in frontend/dist. This mount is placed after API routes
+# so that the API endpoints are matched before the static file fallback.
 # FastAPI checks routes first, then falls back to mounted applications, but
 # moving the mount clarifies intent and avoids potential path‑resolution
 # edge cases in testing environments.
+# NOTE: frontend/dist must be built before the backend starts (e.g. via
+# `docker compose build frontend` or `npm run build` in frontend/).
 app.mount(
     "/",
-    StaticFiles(directory="/app/frontend", html=True),
+    StaticFiles(directory="/app/frontend/dist", html=True),
     name="frontend",
 )

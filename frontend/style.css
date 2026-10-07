@@ -31,6 +31,72 @@ header h1 {
     cursor: pointer;
 }
 
+.albums {
+    max-width: 600px;
+    margin: 0 auto 1rem auto;
+}
+
+.albums ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.albums li {
+    padding: 0.5rem;
+    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+}
+
+.albums li:hover {
+    background: #f0f0f0;
+}
+
+.album-tracks {
+    max-width: 600px;
+    margin: 0 auto 1rem auto;
+}
+
+.album-tracks ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.album-tracks .mode-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.album-tracks .mode-btn {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f0f0f0;
+    cursor: pointer;
+}
+
+.album-tracks .mode-btn:hover {
+    background: #e0e7ff;
+}
+
+.album-tracks li {
+    padding: 0.5rem;
+    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+}
+
+.album-tracks li:hover {
+    background: #f0f0f0;
+}
+
+.album-tracks li.active {
+    background: #e0e7ff;
+    font-weight: bold;
+}
+
 .results ul {
     list-style: none;
     padding: 0;
