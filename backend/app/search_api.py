@@ -245,6 +245,8 @@ async def get_album_detail(album_id: str):
     """
     try:
         client = get_client()
+        # Navidrome のアルバム詳細（トラック一覧）を取得する。ローカル走査への
+        # フォールバックは設計方針により禁止しており、失敗時は 503 を返す。
         response = await client.get_album_tracks(album_id)
         return AlbumDetailResponse(
             album_id=response.get("album_id", album_id),
