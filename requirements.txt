@@ -3,6 +3,7 @@ pydantic-settings
 pytest
 fastapi
 httpx
+requests
 pytest-asyncio
 uvicorn
 ruff
