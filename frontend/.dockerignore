@@ -1,0 +1,7 @@
+# Docker build context から除外する内容。
+# ホストの node_modules（118ディレクトリ）をイメージへコピーすると
+# ビルドが不安定かつ遅くなるため、`npm ci` で解決する。
+node_modules/
+dist/
+.vitest_cache/
+*.log
