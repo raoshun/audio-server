@@ -77,6 +77,16 @@ services:
       - "backend:host-gateway"
     command: ["pytest", "-q"]
 
+  # フロントエンドテスト実行用サービス（Docker 上で Vitest を走らせる）
+  # Node 依存はホストへインストールせず、frontend/test.Dockerfile で隔離する。
+  frontend-test:
+    build:
+      context: ./frontend
+      dockerfile: test.Dockerfile
+    # Vitest は backend の API を呼ばない（fetch をモック化）ため、
+    # サービス依存や追加マウントは不要。
+    command: ["npm", "run", "test"]
+
   lyrics:
     build:
       context: .
