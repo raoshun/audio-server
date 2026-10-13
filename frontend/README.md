@@ -21,6 +21,10 @@ Vue 3 + Vite で構成される Web UI。バンドル成果物（`dist`）をバ
 | `frontend/package.json` | Vue 3 + Vite の依存とスクリプトを定義する。 |
 | `frontend/vite.config.js` | Vite のビルド設定（`dist` 出力、ミニファイ）を定義する。 |
 | `frontend/Dockerfile` | node イメージで Vite をビルドし `dist` を出力する。 |
+| `frontend/test.Dockerfile` | node イメージで Vitest を実行する（テスト専用）。 |
+| `frontend/vitest.config.ts` | Vitest の実行環境（jsdom）とテスト対象を定義する。 |
+| `frontend/tests/` | Vitest のユニットテスト（`App.spec.ts`）とセットアップ。 |
+| `frontend/.dockerignore` | build context から `node_modules/` 等を除外する。 |
 | `frontend/dist/` | ビルド成果物（コミット済み）。バックエンドがサーブする。 |
 
 ## 依存
@@ -28,6 +32,11 @@ Vue 3 + Vite で構成される Web UI。バンドル成果物（`dist`）をバ
 - `vue ^3.4.21`
 - `vite ^5.2.0`
 - `@vitejs/plugin-vue ^5.0.4`
+- テスト依存（devDependencies）: `@vue/test-utils ^2.5.1`、`jsdom ^25.0.1`、`vitest ^2.1.9`
+
+ホストへ npm をインストールしないため、依存解決は `npm ci`（コンテナ内）で行う。
+`package-lock.json` を変更した場合は必ずコミットする（`npm ci` は lockfile と
+`package.json` の不一致で失敗する）。
 
 ## ビルド
 
@@ -35,6 +44,7 @@ CDN 依存を避けるため、Docker の node イメージでバンドルする
 
 ```bash
 # frontend/ のみを build context として Vite をビルドする
+docker compose build frontend-test   # テストイメージ（Vitest）
 docker build -t dwe-frontend -f frontend/Dockerfile frontend/
 ```
 
@@ -47,13 +57,29 @@ docker cp extract:/app/dist ./frontend/dist
 docker rm extract
 ```
 
-ローカルで開発中に素早くビルドする場合は、node があれば直接実行できる。
+`App.vue` を変更した場合は dist を再生成し、コミット済みの `frontend/dist` を更新する
+（バックエンドはコミット済みの dist をサーブするため、ソースだけ変更しても UI は変わらない）。
+
+## テスト
+
+ユニットテスト（Vitest）はホストへ npm をインストールせず、コンテナで実行する。
 
 ```bash
-cd frontend
-npm install
-npm run build
+# frontend-test サービスで Vitest を単発実行する
+make test-frontend
+# 相当: docker compose run --rm frontend-test
 ```
+
+- `frontend/test.Dockerfile` は `npm ci` で lockfile 準拠の依存を解決し、`npm run test`（`vitest run`）を実行する。
+- `frontend/tests/setup.ts` は jsdom が未実装の `HTMLMediaElement.load()/play()` を no-op に差し替える（テスト出力をクリーンにするため）。
+- Vitest は `fetch` をモック化するため backend への依存がなく、live backend を必要としない。
+
+## 動作確認
+
+- `make test` で Playwright テストを含む全テストを実行する。Playwright テストは live backend が `frontend/dist` をサーブしている必要があるため、ビルド成果物が存在することを前提とする。
+- `make test-frontend` でフロントエンドのユニットテストを実行する。
+- `make lint` で ruff、スキルチェック（`scripts/check_skills.py`）、共通コーディング規則のポリシーリンター（`scripts/policy_linter.py`）を実行する。
+- `make verify` はビルド → pytest → Vitest → Lint を順に実行し、CI（`.github/workflows/ci.yml`）と同等のチェックをローカルで走らせる。
 
 ## 動作確認
 
