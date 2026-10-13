@@ -6,9 +6,11 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# package.json と package-lock.json（存在する場合）を先にコピーし、依存をキャッシュする。
-COPY package.json package*.json ./
-RUN npm install
+# package.json と package-lock.json を先にコピーし、依存をキャッシュする。
+# lockfile 準拠で解決するため `npm ci` を使う（コミット済み lockfile と一致させる）。
+# ビルドには devDependencies（vite / @vitejs/plugin-vue）も必要なため、省略しない。
+COPY package.json package-lock.json ./
+RUN npm ci
 
 # ソース全体をコピーし、バンドルする。
 COPY . ./
