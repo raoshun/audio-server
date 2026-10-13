@@ -13,6 +13,7 @@
           id="query"
           v-model="query"
           placeholder="曲名やアーティストを入力"
+          @keydown.enter="performSearch"
         />
         <button id="searchBtn" type="button" @click="performSearch">検索</button>
         <button id="listAllBtn" type="button" @click="fetchAllTracks">全曲一覧</button>
@@ -68,7 +69,7 @@
 
       <!-- プレイヤー。初期は display:none（Playwright は .player の表示と #player の src を確認する）。 -->
       <section class="player" :style="{ display: playerVisible ? 'block' : 'none' }">
-        <audio id="player" controls :src="currentSrc" @ended="onEnded"></audio>
+        <audio id="player" ref="audioEl" controls :src="currentSrc" @ended="onEnded"></audio>
       </section>
     </main>
   </div>
@@ -79,7 +80,7 @@
 // 表示・レイアウトは変更せず、既存のデザインをそのまま維持する。
 import '../style.css';
 
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 
 // 再生中のトラックを保持する応答型のキュー（順再生/ランダム再生の次曲リスト）。
 const queue = ref<string[]>([]);
@@ -96,6 +97,8 @@ const albums = ref<Album[]>([]);
 const albumTracks = ref<AlbumTrack[]>([]);
 // 現在の再生元（:src 束縛用）。
 const currentSrc = ref<string | null>(null);
+// 再生要素（vanilla と同一に load() 明示呼び出しと自動再生を行うため）。
+const audioEl = ref<HTMLAudioElement | null>(null);
 
 // 型定義（既存 API 契約に基づき、変更しない）。
 interface Track {
@@ -120,6 +123,30 @@ function warn(message: string): void {
   alert(message);
 }
 
+// src を設定して再生を開始する。vanilla（app.js）と同一に load() を明示し、
+// play() で自動再生する。play() の拒否（ブラウザの自動再生ブロック）は
+// vanilla では catch していないため、ここでは黙って無視する。
+async function startPlayback(id: string): Promise<void> {
+  currentSrc.value = `/api/v1/track/stream/${id}`;
+  playerVisible.value = true;
+  activeTrackId.value = id;
+  // :src 束縛が DOM へ反映されてから load()/play() を呼ぶ。
+  await nextTick();
+  const el = audioEl.value;
+  if (!el) return;
+  try {
+    el.load();
+    const p = el.play();
+    if (p && typeof p.catch === 'function') {
+      p.catch(() => {
+        // 自動再生がブロックされた場合はユーザー操作を待つ（vanilla と同一）。
+      });
+    }
+  } catch {
+    warn('再生に失敗しました');
+  }
+}
+
 // 検索を実行する。POST /api/v1/search/music に { query } を送信し、結果を描画する。
 async function performSearch(): Promise<void> {
   const trimmed = query.value.trim();
@@ -130,6 +157,10 @@ async function performSearch(): Promise<void> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: trimmed }),
     });
+    if (!resp.ok) {
+      warn('検索に失敗しました');
+      return;
+    }
     const data = await resp.json();
     results.value = Array.isArray(data.results) ? data.results : [];
   } catch {
@@ -141,6 +172,10 @@ async function performSearch(): Promise<void> {
 async function fetchAllTracks(): Promise<void> {
   try {
     const resp = await fetch('/api/v1/tracks');
+    if (!resp.ok) {
+      warn('全曲一覧の取得に失敗しました');
+      return;
+    }
     const data = await resp.json();
     results.value = Array.isArray(data.results) ? data.results : [];
   } catch {
@@ -152,6 +187,10 @@ async function fetchAllTracks(): Promise<void> {
 async function fetchAlbums(): Promise<void> {
   try {
     const resp = await fetch('/api/v1/albums');
+    if (!resp.ok) {
+      warn('アルバム一覧の取得に失敗しました');
+      return;
+    }
     const data = await resp.json();
     albums.value = Array.isArray(data.albums) ? data.albums : [];
   } catch {
@@ -192,13 +231,13 @@ function albumTrackIds(): string[] {
 }
 
 // アルバムのトラックを順再生する（トラックリストの先頭から順番に再生する）。
-function playAlbumSequential(): void {
+async function playAlbumSequential(): Promise<void> {
   queue.value = albumTrackIds();
-  playNext();
+  await playNext();
 }
 
 // アルバムのトラックをランダム再生する（Fisher-Yates でシャッフル後に再生する）。
-function playAlbumShuffle(): void {
+async function playAlbumShuffle(): Promise<void> {
   const ids = albumTrackIds();
   if (ids.length === 0) return;
   for (let i = ids.length - 1; i > 0; i -= 1) {
@@ -206,28 +245,24 @@ function playAlbumShuffle(): void {
     [ids[i], ids[j]] = [ids[j], ids[i]];
   }
   queue.value = ids;
-  playNext();
+  await playNext();
 }
 
 // キューの先頭のトラックを再生する。トラックが終了したら次のトラックへ進む。
-function playNext(): void {
+async function playNext(): Promise<void> {
   if (queue.value.length === 0) return;
   const id = queue.value.shift() as string;
   try {
-    currentSrc.value = `/api/v1/track/stream/${id}`;
-    playerVisible.value = true;
-    activeTrackId.value = id;
+    await startPlayback(id);
   } catch {
     warn('再生に失敗しました');
   }
 }
 
 // 曲を1曲だけ再生する。
-function playTrack(id: string): void {
+async function playTrack(id: string): Promise<void> {
   try {
-    currentSrc.value = `/api/v1/track/stream/${id}`;
-    playerVisible.value = true;
-    activeTrackId.value = id;
+    await startPlayback(id);
   } catch {
     warn('再生に失敗しました');
   }
