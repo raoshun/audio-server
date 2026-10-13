@@ -206,7 +206,7 @@ async function openAlbum(albumId: string): Promise<void> {
   try {
     const resp = await fetch(`/api/v1/albums/${albumId}`);
     if (!resp.ok) {
-      warn('アルバムを取れませんでした');
+      warn('アルバムを開けませんでした');
       return;
     }
     const data = await resp.json();

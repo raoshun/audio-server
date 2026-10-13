@@ -246,7 +246,7 @@ describe('App.vue', () => {
       await wrapper.findAll('#albumList li')[0].trigger('click');
       await flushPromises();
 
-      expect(alertMock).toHaveBeenCalledWith('アルバムを取れませんでした');
+      expect(alertMock).toHaveBeenCalledWith('アルバムを開けませんでした');
       expect(wrapper.find('#albumTracksSection').attributes('style')).toContain('none');
     });
 
