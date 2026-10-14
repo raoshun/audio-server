@@ -357,4 +357,153 @@ describe('App.vue', () => {
       expect(activeItems[0].attributes('data-id')).toBe('t1');
     });
   });
+  describe('暗転モーダル再生UI', () => {
+    it('曲を選択するとオーバーレイと中央再生ウィンドウを表示する', async () => {
+      mockFetch('/api/v1/search/music', { results: [{ id: 't1', title: 'Modal Song', artist: 'Artist A' }] });
+      mockFetch('/api/v1/lyrics/t1', { track_id: 't1', synced: false, lines: [] });
+
+      const wrapper = mount(App);
+      await wrapper.find('#query').setValue('Modal');
+      await wrapper.find('#searchBtn').trigger('click');
+      await flushPromises();
+
+      // 初期はオーバーレイが非表示、曲をクリックすると表示される。
+      expect(wrapper.find('.overlay').attributes('style')).toContain('none');
+      await wrapper.findAll('#resultList li')[0].trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find('.overlay').attributes('style')).toContain('block');
+      expect(wrapper.find('.player-modal').exists()).toBe(true);
+      expect(wrapper.find('.modal-title').text()).toBe('Modal Song');
+      expect(wrapper.find('.modal-artist').text()).toBe('Artist A');
+
+      // 既存契約（.player / #player）はモーダル内でも維持される。
+      expect(wrapper.find('.player').attributes('style')).toContain('block');
+      expect(wrapper.find('#player').attributes('src')).toContain('/api/v1/track/stream/t1');
+    });
+
+    it('閉じるボタンでオーバーレイを閉じ、再生は継続する', async () => {
+      mockFetch('/api/v1/search/music', { results: [{ id: 't1', title: 'Song' }] });
+      mockFetch('/api/v1/lyrics/t1', { track_id: 't1', synced: false, lines: [] });
+
+      const wrapper = mount(App);
+      await wrapper.find('#query').setValue('Song');
+      await wrapper.find('#searchBtn').trigger('click');
+      await flushPromises();
+      await wrapper.findAll('#resultList li')[0].trigger('click');
+      await flushPromises();
+
+      await wrapper.find('#closeModalBtn').trigger('click');
+      await flushPromises();
+
+      // オーバーレイは閉じるが、プレイヤーと再生元はそのまま残る。
+      expect(wrapper.find('.overlay').attributes('style')).toContain('none');
+      expect(wrapper.find('.player').attributes('style')).toContain('block');
+      expect(wrapper.find('#player').attributes('src')).toContain('/api/v1/track/stream/t1');
+    });
+  });
+
+  describe('歌詞の同期表示', () => {
+    it('歌詞がある曲は歌詞行を描画する', async () => {
+      mockFetch('/api/v1/search/music', { results: [{ id: 't1', title: 'Lyric Song' }] });
+      mockFetch('/api/v1/lyrics/t1', {
+        track_id: 't1',
+        synced: true,
+        lines: [
+          { start: 0, text: 'First line.' },
+          { start: 11640, text: 'Second line.' },
+        ],
+      });
+
+      const wrapper = mount(App);
+      await wrapper.find('#query').setValue('Lyric');
+      await wrapper.find('#searchBtn').trigger('click');
+      await flushPromises();
+      await wrapper.findAll('#resultList li')[0].trigger('click');
+      await flushPromises();
+
+      const lines = wrapper.findAll('#lyricsList li');
+      expect(lines.length).toBe(2);
+      expect(lines[0].text()).toBe('First line.');
+      // 再生位置 0 秒の行がアクティブになる。
+      expect(lines[0].classes()).toContain('active');
+    });
+
+    it('timeupdate で再生位置に対応する行がハイライトされる', async () => {
+      mockFetch('/api/v1/search/music', { results: [{ id: 't1', title: 'Lyric Song' }] });
+      mockFetch('/api/v1/lyrics/t1', {
+        track_id: 't1',
+        synced: true,
+        lines: [
+          { start: 0, text: 'First line.' },
+          { start: 11640, text: 'Second line.' },
+        ],
+      });
+
+      const wrapper = mount(App);
+      await wrapper.find('#query').setValue('Lyric');
+      await wrapper.find('#searchBtn').trigger('click');
+      await flushPromises();
+      await wrapper.findAll('#resultList li')[0].trigger('click');
+      await flushPromises();
+
+      // jsdom は HTMLMediaElement の currentTime を代入できるため、
+      // 12 秒（12000ms）へ進めた timeupdate を発火して同期を検証する。
+      const audio = wrapper.find('#player');
+      (audio.element as unknown as { currentTime: number }).currentTime = 12;
+      await audio.trigger('timeupdate');
+      await flushPromises();
+
+      const lines = wrapper.findAll('#lyricsList li');
+      expect(lines[1].classes()).toContain('active');
+      expect(lines[0].classes()).not.toContain('active');
+    });
+
+    it('歌詞がない曲は「歌詞はありません」を表示する', async () => {
+      mockFetch('/api/v1/search/music', { results: [{ id: 't1', title: 'No Lyric' }] });
+      mockFetch('/api/v1/lyrics/t1', { track_id: 't1', synced: false, lines: [] });
+
+      const wrapper = mount(App);
+      await wrapper.find('#query').setValue('NoLyric');
+      await wrapper.find('#searchBtn').trigger('click');
+      await flushPromises();
+      await wrapper.findAll('#resultList li')[0].trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find('.lyrics-message').text()).toBe('歌詞はありません');
+      expect(wrapper.find('#lyricsList').exists()).toBe(false);
+    });
+
+    it('歌詞取得に失敗した場合は警告メッセージを表示する', async () => {
+      mockFetch('/api/v1/search/music', { results: [{ id: 't1', title: 'Fail' }] });
+      mockFetch('/api/v1/lyrics/t1', { error: 'not found' }, false, 404);
+
+      const wrapper = mount(App);
+      await wrapper.find('#query').setValue('Fail');
+      await wrapper.find('#searchBtn').trigger('click');
+      await flushPromises();
+      await wrapper.findAll('#resultList li')[0].trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find('.lyrics-message').text()).toBe('歌詞を取得できませんでした');
+    });
+
+    it('アルバムトラックの再生でも歌詞を取得する', async () => {
+      const wrapper = mount(App);
+      await openFirstAlbum(wrapper, [{ id: 't1', title: 'T1', artist: 'Artist A' }]);
+
+      mockFetch('/api/v1/lyrics/t1', {
+        track_id: 't1',
+        synced: true,
+        lines: [{ start: 0, text: 'Album line.' }],
+      });
+
+      await wrapper.find('#playSequentialBtn').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find('.overlay').attributes('style')).toContain('block');
+      expect(wrapper.find('.modal-title').text()).toBe('T1');
+      expect(wrapper.findAll('#lyricsList li')[0].text()).toBe('Album line.');
+    });
+  });
 });

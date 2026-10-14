@@ -7,8 +7,9 @@ Vue 3 + Vite で構成される Web UI。バンドル成果物（`dist`）をバ
 - フロントエンドは `frontend/src/App.vue`（Vue 3）で実装される。
 - スタイルは `frontend/style.css`（vanilla 時代の既存スタイル）を使用し、`App.vue` からインポートしてバンドルへ取り込む。
 - データフローは家庭内サーバー専用で外部公開されないため、CDN には依存せずローカルにバンドルする。
-- 既存の機能・API 契約（`/api/v1/search/music`、`/api/v1/tracks`、`/api/v1/albums`、`/api/v1/albums/{id}`、`/api/v1/track/stream/{id}`）は維持する。
+- 既存の機能・API 契約（`/api/v1/search/music`、`/api/v1/tracks`、`/api/v1/albums`、`/api/v1/albums/{id}`、`/api/v1/track/stream/{id}`、`/api/v1/lyrics/{track_id}`）は維持する。
 - 再生キュー（順再生/ランダム再生）、再生中のトラックハイライト、アルバム開きエラー処理の動作を保持する。
+- 曲を選択すると暗転オーバーレイ（`.overlay`）上の中央再生ウィンドウ（`.player-modal`）を表示し、歌詞を持つ曲は `#timeupdate` に合わせて歌詞行を同期ハイライトする。閉じるボタン（`#closeModalBtn`）でウィンドウを閉じても再生は継続する。
 
 ## 構成
 

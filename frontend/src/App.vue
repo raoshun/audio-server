@@ -67,10 +67,48 @@
         </ul>
       </section>
 
-      <!-- プレイヤー。初期は display:none（Playwright は .player の表示と #player の src を確認する）。 -->
-      <section class="player" :style="{ display: playerVisible ? 'block' : 'none' }">
-        <audio id="player" ref="audioEl" controls :src="currentSrc" @ended="onEnded"></audio>
-      </section>
+      <!-- 暗転オーバーレイと中央再生ウィンドウ。曲を選択すると表示される。
+           .player と #player は既存テスト契約（Playwright / Vitest）が参照する
+           ため、要素名・クラス・display のスタイル束縛は変更しない。 -->
+      <div class="overlay" :style="{ display: modalVisible ? 'block' : 'none' }">
+        <div class="player-modal">
+          <div class="modal-header">
+            <div class="modal-track">
+              <span class="modal-title">{{ modalTitle }}</span>
+              <span class="modal-artist">{{ modalArtist }}</span>
+            </div>
+            <button id="closeModalBtn" type="button" @click="closeModal">閉じる</button>
+          </div>
+
+          <section class="player" :style="{ display: playerVisible ? 'block' : 'none' }">
+            <audio
+              id="player"
+              ref="audioEl"
+              controls
+              :src="currentSrc"
+              @ended="onEnded"
+              @timeupdate="onTimeUpdate"
+            ></audio>
+          </section>
+
+          <!-- 歌詞パネル。歌詞が無い曲・取得失敗時はメッセージを表示する。 -->
+          <section class="lyrics" ref="lyricsPanel">
+            <p v-if="lyricsLoading" class="lyrics-message">歌詞を取得中…</p>
+            <p v-else-if="lyricsFailed" class="lyrics-message">歌詞を取得できませんでした</p>
+            <p v-else-if="lyrics.length === 0" class="lyrics-message">歌詞はありません</p>
+            <ul v-else id="lyricsList">
+              <li
+                v-for="(line, index) in lyrics"
+                :key="index"
+                class="lyric-line"
+                :class="{ active: index === activeLyricIndex }"
+              >
+                {{ line.text }}
+              </li>
+            </ul>
+          </section>
+        </div>
+      </div>
     </main>
   </div>
 </template>
@@ -100,11 +138,36 @@ const currentSrc = ref<string | null>(null);
 // 再生要素（vanilla と同一に load() 明示呼び出しと自動再生を行うため）。
 const audioEl = ref<HTMLAudioElement | null>(null);
 
+// モーダル（暗転オーバーレイ）の表示。曲を選択すると表示される。
+const modalVisible = ref(false);
+// モーダルヘッダへ表示する曲情報。
+const modalTitle = ref('');
+const modalArtist = ref('');
+// 歌詞パネルの状態。
+const lyrics = ref<LyricLineData[]>([]);
+const lyricsLoading = ref(false);
+const lyricsFailed = ref(false);
+// 再生位置と同期してハイライトする行のインデックス。
+const activeLyricIndex = ref(-1);
+// 歌詞パネル要素（アクティブ行の自動スクロールに使用）。
+const lyricsPanel = ref<HTMLElement | null>(null);
+
+// 歌詞の1行（API 契約と同一。start は曲頭からのミリ秒 offset）。
+interface LyricLineData {
+  start: number;
+  text: string;
+}
+// 曲情報（モーダルヘッダ表示用。既存 API 契約の song 型を拡張しない）。
+interface TrackInfo extends Track {
+  artist?: string;
+}
+
 // 型定義（既存 API 契約に基づき、変更しない）。
 interface Track {
   id: string;
   title?: string;
   name?: string;
+  artist?: string;
 }
 interface AlbumTrack extends Track {}
 interface Album {
@@ -123,6 +186,77 @@ function warn(message: string): void {
   alert(message);
 }
 
+// 曲 ID から表示用の曲情報を検索する。検索結果・アルバムトラックのどちらに
+// あっても参照できるように、両方の一覧から照合する。
+function lookupTrack(id: string): TrackInfo | null {
+  const fromResults = results.value.find((item) => item.id === id);
+  if (fromResults) return fromResults;
+  const fromAlbum = albumTracks.value.find((item) => item.id === id);
+  return fromAlbum ?? null;
+}
+
+// 歌詞を取得する（GET /api/v1/lyrics/{track_id}）。
+// 歌詞は Navidrome の .lrc サイドカーからバックエンド経由で取得するため、
+// 失敗時は歌詞パネルに「歌詞を取得できませんでした」を表示する。
+async function fetchLyrics(id: string): Promise<void> {
+  lyrics.value = [];
+  activeLyricIndex.value = -1;
+  lyricsFailed.value = false;
+  lyricsLoading.value = true;
+  try {
+    // バックエンドの歌詞 API（GET /api/v1/lyrics/{track_id}）を呼ぶ。
+    const resp = await fetch(`/api/v1/lyrics/${id}`);
+    if (!resp.ok) {
+      lyricsLoading.value = false;
+      lyricsFailed.value = true;
+      return;
+    }
+    const data = await resp.json();
+    lyrics.value = Array.isArray(data.lines) ? data.lines : [];
+    lyricsLoading.value = false;
+    // 取得直後の再生位置（load() 前でも currentTime は保持される）で
+    // アクティブ行を初期化する。
+    syncLyricIndex();
+  } catch {
+    lyricsLoading.value = false;
+    lyricsFailed.value = true;
+  }
+}
+
+// 再生位置（秒）に対応する歌詞行のインデックスを算出し、パネル内へ
+// アクティブ行が見えるようスクロールする。jsdom（テスト環境）は
+// scrollIntoView を実装していないため、存在を確認してから呼ぶ。
+function syncLyricIndex(): void {
+  if (lyrics.value.length === 0) return;
+  const el = audioEl.value;
+  const currentMs = Math.floor((el?.currentTime ?? 0) * 1000);
+  let index = -1;
+  for (let i = 0; i < lyrics.value.length; i += 1) {
+    if (lyrics.value[i].start <= currentMs) {
+      index = i;
+    } else {
+      break;
+    }
+  }
+  activeLyricIndex.value = index;
+  if (index < 0) return;
+  const panel = lyricsPanel.value;
+  const target = panel?.querySelector(`li.lyric-line:nth-child(${index + 1})`);
+  if (target && typeof target.scrollIntoView === 'function') {
+    target.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+// 再生位置が進んだときに歌詞を同期させる（audio の timeupdate）。
+function onTimeUpdate(): void {
+  syncLyricIndex();
+}
+
+// 暗転オーバーレイを閉じる。再生そのものは停止しない（vanilla の挙動を維持）。
+function closeModal(): void {
+  modalVisible.value = false;
+}
+
 // src を設定して再生を開始する。vanilla（app.js）と同一に load() を明示し、
 // play() で自動再生する。play() の拒否（ブラウザの自動再生ブロック）は
 // vanilla では catch していないため、ここでは黙って無視する。
@@ -130,6 +264,12 @@ async function startPlayback(id: string): Promise<void> {
   currentSrc.value = `/api/v1/track/stream/${id}`;
   playerVisible.value = true;
   activeTrackId.value = id;
+  // 曲を選択したときに暗転オーバーレイの中央再生ウィンドウを表示する。
+  modalVisible.value = true;
+  const info = lookupTrack(id);
+  modalTitle.value = info ? displayName(info) : 'Unnamed track';
+  modalArtist.value = info?.artist ?? '';
+  await fetchLyrics(id);
   // :src 束縛が DOM へ反映されてから load()/play() を呼ぶ。
   await nextTick();
   const el = audioEl.value;

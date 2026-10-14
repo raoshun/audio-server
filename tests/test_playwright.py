@@ -78,3 +78,16 @@ def test_user_flow(page):
     # Optional: ensure the URL contains the captured track_id.
     if track_id:
         expect(audio).to_have_attribute("src", re.compile(track_id))
+
+    # 6. 暗転オーバーレイの中央再生ウィンドウと歌詞パネルが表示されることを確認する。
+    #    曲を選択すると .overlay が表示され、その中央に .player-modal が来る。
+    overlay = page.locator(".overlay")
+    expect(overlay).to_be_visible()
+    expect(page.locator(".player-modal")).to_be_visible()
+
+    #    歌詞パネルは、歌詞がある曲では行リスト、無い曲ではメッセージを表示する。
+    #    検索結果の項目が歌詞を持たない場合でもどちらかで表示されるため、
+    #    両方を受け入れる。
+    lyrics = page.locator(".lyrics")
+    expect(lyrics).to_be_visible()
+    expect(lyrics.locator("#lyricsList li, .lyrics-message").first).to_be_visible(timeout=10000)

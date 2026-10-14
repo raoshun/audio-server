@@ -228,6 +228,43 @@ class NavidromeClient:
 
         return {"results": tracks}
 
+    async def get_lyrics(self, track_id: str) -> dict:
+        """曲の歌詞を取得する（OpenSubsonic の ``getLyricsBySongId``）。
+
+        Navidrome は DB の ``media_file.lyrics`` 列へ歌詞を保存しておらず、
+        ``.lrc`` サイドカーファイルを要求時に読み取る（scanner は音声以外の
+        拡張子を索引しないため、旧 ``getLyrics`` 端点ではサイドカーのみでは
+        空を返す）。そのため OpenSubsonic の ``getLyricsBySongId`` を使用する。
+
+        返り値は ``{track_id, synced, lines: [{start, text}]}``。``start`` は
+        曲頭からのミリ秒 offset で、フロントエンドの ``timeupdate``（秒）と
+        比較するためミリ秒のまま保持する。歌詞が無い曲は ``lines: []``。
+        """
+        root = await self._get_xml("/rest/getLyricsBySongId", {"id": track_id})
+
+        lines: list[dict[str, int | str]] = []
+        synced = False
+        # 名前空間が付くことがあるため、ローカルタグ名で比較する。
+        for el in root.iter():
+            local_name = el.tag.split("}")[-1]
+            if local_name == "structuredLyrics":
+                # ``synced`` は "true"/"false" の文字列属性。同期歌詞のみ扱う。
+                synced = el.attrib.get("synced") == "true"
+            elif local_name == "line":
+                text = (el.text or "").strip()
+                if not text:
+                    # 空行（区切り）は表示しない。
+                    continue
+                start_raw = el.attrib.get("start", "0")
+                try:
+                    start_ms = int(start_raw)
+                except ValueError:
+                    # 数値でない start は行の開始時刻として扱えないためスキップする。
+                    continue
+                lines.append({"start": start_ms, "text": text})
+
+        return {"track_id": track_id, "synced": synced, "lines": lines}
+
     @staticmethod
     def _build_query_string(params: dict) -> str:
         """検索パラメータを URL エンコードした文字列に変換する。"""

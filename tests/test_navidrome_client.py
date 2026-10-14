@@ -300,3 +300,64 @@ async def test_get_album_tracks_returns_track_results(
     assert "search3" in captured["url"]
     assert "query=Album%20One" in captured["url"]
     assert "type=track" in captured["url"]
+
+
+@pytest.mark.asyncio
+async def test_get_lyrics_parses_structured_lyrics(settings_fixture, monkeypatch):
+    """``get_lyrics`` は OpenSubsonic の ``getLyricsBySongId`` を解析する。
+
+    Navidrome は歌詞を DB へ保存せず ``.lrc`` サイドカーから要求時に読み取るため、
+    ``line`` の ``start``（ミリ秒）をそのまま返す。空行は除外する。
+    """
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<subsonic-response xmlns="http://subsonic.org/restapi" status="ok">'
+        '<lyricsList><structuredLyrics displayTitle="Balloons" lang="xxx" synced="true">'
+        '<line start="0">First line.</line>'
+        '<line start="11640">Second line.</line>'
+        '<line start=""></line>'
+        "</structuredLyrics></lyricsList>"
+        "</subsonic-response>"
+    )
+
+    client = NavidromeClient(settings_fixture)
+    captured: dict[str, str] = {}
+
+    def fake_urlopen(url, timeout=None):
+        captured["url"] = url
+        return _FakeResponse(xml)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    result = await client.get_lyrics("s1")
+
+    assert result["track_id"] == "s1"
+    assert result["synced"] is True
+    assert result["lines"] == [
+        {"start": 0, "text": "First line."},
+        {"start": 11640, "text": "Second line."},
+    ]
+    assert "getLyricsBySongId" in captured["url"]
+    assert "id=s1" in captured["url"]
+
+
+@pytest.mark.asyncio
+async def test_get_lyrics_returns_empty_list_when_no_sidecar(settings_fixture, monkeypatch):
+    """歌詞ファイルが無い曲は ``lines: []`` を返す（空の ``lyricsList``）。"""
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<subsonic-response xmlns="http://subsonic.org/restapi" status="ok">'
+        "<lyricsList></lyricsList>"
+        "</subsonic-response>"
+    )
+
+    client = NavidromeClient(settings_fixture)
+
+    monkeypatch.setattr(
+        urllib.request, "urlopen",
+        lambda url, timeout=None: _FakeResponse(xml),
+    )
+
+    result = await client.get_lyrics("s2")
+    assert result["synced"] is False
+    assert result["lines"] == []

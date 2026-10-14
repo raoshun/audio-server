@@ -119,6 +119,100 @@ header h1 {
     margin-top: 1rem;
 }
 
+/* 暗転オーバーレイ。曲を選択すると表示され、背景を暗くして中央の
+   再生ウィンドウを浮き立たせる。z-index はページ上の他の要素より前に出る。 */
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+/* 中央再生ウィンドウ。暗転上に表示されるカード。 */
+.player-modal {
+    background: #fff;
+    border-radius: 8px;
+    padding: 1rem;
+    width: min(90vw, 640px);
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+/* ウィンドウ上部の曲情報と閉じるボタン。 */
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.modal-track {
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-title {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.modal-artist {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+#closeModalBtn {
+    padding: 0.4rem 0.8rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f0f0f0;
+    cursor: pointer;
+}
+
+#closeModalBtn:hover {
+    background: #e0e7ff;
+}
+
+/* 歌詞パネル。再生位置と同期した行をハイライトし、スクロールして追従する。 */
+.lyrics {
+    max-height: 45vh;
+    overflow-y: auto;
+    border-top: 1px solid #ddd;
+    padding-top: 0.5rem;
+}
+
+.lyrics ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.lyric-line {
+    padding: 0.35rem 0.5rem;
+    color: #888;
+    line-height: 1.4;
+}
+
+/* 再生位置に対応する歌詞行。強調して表示する。 */
+.lyric-line.active {
+    color: #1a1a1a;
+    font-weight: bold;
+    background: #e0e7ff;
+    border-radius: 4px;
+}
+
+.lyrics-message {
+    color: #888;
+    text-align: center;
+    margin: 0.5rem 0;
+}
+
 @media (max-width: 600px) {
     .search {
         flex-direction: column;
