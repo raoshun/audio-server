@@ -351,6 +351,75 @@ MVP が完了したとみなす条件は次の通り。
 * ユーザーごとの **サブスクリプション/権限** を付与し、検索結果をフィルタリングする。
 * 検索ログを収集し、LLM のプロンプト最適化に利用する。
 
+## LLM によるプレイリスト生成 API 仕様（`#12`）
+
+### 目的
+ユーザーのチャット指示（自然言語）を LLM で解析し、`Navidrome` カタログ上の
+トラック id を選んでプレイリストを作成する。検索 API（`POST /api/v1/search/music`）
+が検索条件の抽出のみを行うのに対し、本機能は選曲と再生順の組み立てを行う。
+
+### フロー概要
+1. **ユーザーリクエスト** – フロントエンドの指示入力欄から自然言語テキストを受け取る。
+2. **LLM プロバイダー** – `backend/app/llm_client.py` の抽象（`LLMProvider`）経由で
+   `Ollama`（`localhost:11434`）の軽量モデルを呼び出す。テストではモックへ差し替える。
+3. **構造化出力** – `POST /api/generate` の `format` に JSON schema を渡して
+   `{"playlist": [{"id": "string", "reason": "string"}]}` の形を得る。
+   `/api/chat` は thinking token を返すため遅く、本機能では使用しない。
+4. **カタログ照合** – `backend/app/playlist_service.py` が LLM 出力を Pydantic で
+   検証し、`catalog` に存在しない id を除外、重複を排除、曲数上限で切る。
+5. **レスポンス** – LLM の選曲順のままクライアントへ返す。
+
+### エンドポイント仕様
+
+| 項目 | 内容 |
+|------|------|
+| **URL** | `/api/v1/playlist` |
+| **Method** | `POST` |
+| **認証** | なし。`Ollama` は家庭内ネットワーク上のローカルサービスで認証情報を持たない |
+| **Request Body** | ```json { "instruction": "string", "limit": 10 } ``` |
+| **Response (200)** | ```json { "model": "string", "catalog_size": 200, "playlist": [ { "id": "string", "title": "string", "artist": "string", "reason": "string" } ] } ``` |
+| **Response (422)** | 指示が空。`instruction` の検証で検出される。 |
+| **Response (502)** | LLM の出力が JSON として読めない、または期待した形ではない。 |
+| **Response (503)** | `Ollama` に接続できない、または `Navidrome` が利用不可。 |
+
+### セキュリティ・権限
+* LLM 出力は JSON schema で検証し、`catalog` 照合済みの id だけを扱う。
+  そのまま URL や `Navidrome` パラメータへ連結しない。
+* API キーなどの秘密情報は使わない。接続先・モデル名・上限は環境変数のみから取得する。
+* 音楽情報の取得元は `Navidrome` のみ。ローカル音楽ディレクトリ走査へのフォールバックは禁止。
+
+### テスト方針
+1. `Ollama` クライアントは `httpx.MockTransport` でモックし、ネットワークへ出さない
+   （`tests/test_llm_client.py`）。
+2. プレイリストサービスはダミー LLM を注入し、`catalog` に無い id の除外・
+   重複排除・曲数上限を検証する（`tests/test_playlist_api.py`）。
+3. 503 / 502 / 422 のエラーハンドリングを確認する。
+4. フロントエンドは Vitest で指示入力・描画・順再生を検証する。
+
+### 実装指針（バックエンド側）
+* `backend/app/llm_client.py` – `LLMProvider` Protocol と `OllamaClient`。
+* `backend/app/playlist_service.py` – `PLAYLIST_SCHEMA`、`build_catalog`、
+  `build_prompt`、`create_playlist`。
+* `backend/app/search_api.py` – `POST /api/v1/playlist`。
+* `docker-compose.yml` の `backend` サービスに `extra_hosts` を追加し、
+  `host.docker.internal` を `host-gateway` へ解決する（Linux では既定で解決できない）。
+
+### 動作確認（実機 `Ollama`）
+ユニットテストは実際の `Ollama` へ接続しない。実機確認は軽量モデルで
+以下の手順で行う:
+
+```bash
+docker compose up -d --build backend
+curl -fsS -X POST http://localhost:8000/api/v1/playlist \
+  -H 'Content-Type: application/json' \
+  -d '{"instruction": "静かな曲から始めて、最後に明るい曲へ", "limit": 5}'
+```
+
+### 今後の拡張
+* LLM の選曲理由をプレイリスト名へ反映する。
+* 生成したプレイリストを `Navidrome` のプレイリストとして保存する。書き込みは
+  MinIO を正本とするルールに従い、別途 Issue で扱う。
+
 ## 例示プロンプト
 
 ## 例示プロンプト

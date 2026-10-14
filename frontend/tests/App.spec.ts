@@ -360,6 +360,139 @@ describe('App.vue', () => {
     });
   });
 
+  describe('プレイリスト作成（createPlaylist、Issue #12）', () => {
+    it('指示を送信してプレイリストを描画する', async () => {
+      mockFetch('/api/v1/playlist', {
+        model: 'gemma4:e2b',
+        catalog_size: 3,
+        playlist: [
+          { id: 't2', title: 'Quiet Song', reason: '静かに始める' },
+          { id: 't1', title: 'Bright Song', reason: '最後に明るい曲' },
+        ],
+      });
+
+      const wrapper = mount(App);
+      await wrapper.find('#playlistInstruction').setValue('静かな曲から始めて');
+      await wrapper.find('#createPlaylistBtn').trigger('click');
+      await flushPromises();
+
+      const items = wrapper.findAll('#playlistList li');
+      expect(items.length).toBe(2);
+      expect(items[0].attributes('data-id')).toBe('t2');
+      expect(items[0].find('.playlist-title').text()).toBe('Quiet Song');
+      expect(items[0].find('.playlist-reason').text()).toBe('静かに始める');
+      expect(wrapper.find('#playlistModel').text()).toBe('gemma4:e2b');
+      expect(wrapper.find('#playlistCount').text()).toBe('2曲');
+    });
+
+    it('空の指示では API を呼ばない', async () => {
+      const wrapper = mount(App);
+      await wrapper.find('#createPlaylistBtn').trigger('click');
+      await flushPromises();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(wrapper.findAll('#playlistList li').length).toBe(0);
+    });
+
+    it('LLM 出力不正（502）は警告する', async () => {
+      mockFetch('/api/v1/playlist', { detail: 'invalid LLM output' }, false, 502);
+
+      const wrapper = mount(App);
+      await wrapper.find('#playlistInstruction').setValue('好きな曲');
+      await wrapper.find('#createPlaylistBtn').trigger('click');
+      await flushPromises();
+
+      expect(alertMock).toHaveBeenCalledWith('プレイリスト作成に失敗しました（HTTP 502）');
+      expect(wrapper.findAll('#playlistList li').length).toBe(0);
+    });
+
+    it('Ollama 接続不可（503）は警告する', async () => {
+      mockFetch('/api/v1/playlist', { detail: 'LLM service unavailable' }, false, 503);
+
+      const wrapper = mount(App);
+      await wrapper.find('#playlistInstruction').setValue('好きな曲');
+      await wrapper.find('#createPlaylistBtn').trigger('click');
+      await flushPromises();
+
+      expect(alertMock).toHaveBeenCalledWith('プレイリスト作成に失敗しました（HTTP 503）');
+    });
+
+    it('プレイリストが空の場合は警告する', async () => {
+      mockFetch('/api/v1/playlist', { model: 'gemma4:e2b', catalog_size: 0, playlist: [] });
+
+      const wrapper = mount(App);
+      await wrapper.find('#playlistInstruction').setValue('好きな曲');
+      await wrapper.find('#createPlaylistBtn').trigger('click');
+      await flushPromises();
+
+      expect(alertMock).toHaveBeenCalledWith('プレイリストを作成できませんでした');
+    });
+
+    it('Enter キーでもプレイリストを作成する', async () => {
+      mockFetch('/api/v1/playlist', {
+        model: 'gemma4:e2b',
+        catalog_size: 1,
+        playlist: [{ id: 't1', title: 'Song One' }],
+      });
+
+      const wrapper = mount(App);
+      await wrapper.find('#playlistInstruction').setValue('1曲だけ');
+      await wrapper.find('#playlistInstruction').trigger('keydown.enter');
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalled();
+      expect(wrapper.findAll('#playlistList li')[0].text()).toContain('Song One');
+    });
+
+    it('順再生は LLM の選曲順のままキューへ入れる', async () => {
+      mockFetch('/api/v1/playlist', {
+        model: 'gemma4:e2b',
+        catalog_size: 2,
+        playlist: [
+          { id: 't2', title: 'Second' },
+          { id: 't1', title: 'First' },
+        ],
+      });
+
+      const wrapper = mount(App);
+      const media = stubMedia(wrapper.find('#player').element);
+      await wrapper.find('#playlistInstruction').setValue('順に再生');
+      await wrapper.find('#createPlaylistBtn').trigger('click');
+      await flushPromises();
+
+      await wrapper.find('#playPlaylistBtn').trigger('click');
+      await flushPromises();
+
+      // 選曲順の先頭（t2）から再生が始まり、残りはキューへ残る。
+      expect(media.load).toHaveBeenCalled();
+      expect(wrapper.find('#player').attributes('src')).toContain('/api/v1/track/stream/t2');
+      expect(wrapper.findAll('#playlistList li.active')[0].attributes('data-id')).toBe('t2');
+    });
+
+    it('プレイリストの曲を終了するとキューの次の曲へ進む', async () => {
+      mockFetch('/api/v1/playlist', {
+        model: 'gemma4:e2b',
+        catalog_size: 2,
+        playlist: [{ id: 't1', title: 'One' }, { id: 't2', title: 'Two' }],
+      });
+
+      const wrapper = mount(App);
+      const media = stubMedia(wrapper.find('#player').element);
+      await wrapper.find('#playlistInstruction').setValue('2曲');
+      await wrapper.find('#createPlaylistBtn').trigger('click');
+      await flushPromises();
+
+      await wrapper.find('#playPlaylistBtn').trigger('click');
+      await flushPromises();
+
+      await wrapper.find('#player').trigger('ended');
+      await flushPromises();
+
+      expect(media.play).toHaveBeenCalledTimes(2);
+      expect(wrapper.find('#player').attributes('src')).toContain('/api/v1/track/stream/t2');
+    });
+  });
+
   describe('再生中ハイライト', () => {
     it('再生中のトラックがハイライトされる', async () => {
       const wrapper = mount(App);
@@ -548,6 +681,31 @@ describe('App.vue', () => {
       await flushPromises();
 
       expect(wrapper.find('.lyrics-message').text()).toBe('歌詞を取得できませんでした');
+    });
+
+    it('プレイリストの曲を再生時も歌詞を取得する', async () => {
+      mockFetch('/api/v1/playlist', {
+        model: 'gemma4:e2b',
+        catalog_size: 2,
+        playlist: [{ id: 't1', title: 'Playlist Song', reason: '静かな曲' }],
+      });
+      mockFetch('/api/v1/lyrics/t1', {
+        track_id: 't1',
+        synced: true,
+        lines: [{ start: 0, text: 'Playlist line.' }],
+      });
+
+      const wrapper = mount(App);
+      await wrapper.find('#playlistInstruction').setValue('静かな曲から始めて');
+      await flushPromises();
+      await wrapper.find('#createPlaylistBtn').trigger('click');
+      await flushPromises();
+
+      await wrapper.findAll('#playlistList li')[0].trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find('.modal-title').text()).toBe('Playlist Song');
+      expect(wrapper.findAll('#lyricsList li')[0].text()).toBe('Playlist line.');
     });
 
     it('アルバムトラックの再生でも歌詞を取得する', async () => {
