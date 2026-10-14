@@ -31,6 +31,72 @@ header h1 {
     cursor: pointer;
 }
 
+.albums {
+    max-width: 600px;
+    margin: 0 auto 1rem auto;
+}
+
+.albums ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.albums li {
+    padding: 0.5rem;
+    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+}
+
+.albums li:hover {
+    background: #f0f0f0;
+}
+
+.album-tracks {
+    max-width: 600px;
+    margin: 0 auto 1rem auto;
+}
+
+.album-tracks ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.album-tracks .mode-buttons {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.album-tracks .mode-btn {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f0f0f0;
+    cursor: pointer;
+}
+
+.album-tracks .mode-btn:hover {
+    background: #e0e7ff;
+}
+
+.album-tracks li {
+    padding: 0.5rem;
+    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+}
+
+.album-tracks li:hover {
+    background: #f0f0f0;
+}
+
+.album-tracks li.active {
+    background: #e0e7ff;
+    font-weight: bold;
+}
+
 .results ul {
     list-style: none;
     padding: 0;
@@ -51,6 +117,131 @@ header h1 {
 .player {
     text-align: center;
     margin-top: 1rem;
+}
+
+/* 暗転オーバーレイ。曲を選択すると表示され、背景を暗くして中央の
+   再生ウィンドウを浮き立たせる。z-index はページ上の他の要素より前に出る。 */
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+/* 中央再生ウィンドウ。暗転オーバーレイとは兄弟要素なので、暗転が
+   最小化で消えてもウィンドウ（またはバー）を残せる。画面中央に固定する。 */
+.player-modal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    border-radius: 8px;
+    padding: 1rem;
+    width: min(90vw, 640px);
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    z-index: 101;
+}
+
+/* ウィンドウ上部の曲情報と閉じるボタン。 */
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.modal-track {
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-title {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.modal-artist {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+/* ヘッダ右側のボタン群（最小化・表示・閉じる）。 */
+.modal-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+#minimizeModalBtn,
+#showModalBtn,
+#closeModalBtn {
+    padding: 0.4rem 0.8rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f0f0f0;
+    cursor: pointer;
+}
+
+#minimizeModalBtn:hover,
+#showModalBtn:hover,
+#closeModalBtn:hover {
+    background: #e0e7ff;
+}
+
+/* 最小化時のバー。暗転は解かれているので、画面下部に常時表示する。
+   曲情報と本文は v-if / v-show で非表示にし、2ボタンだけ残す。 */
+.player-modal.minimized {
+    position: fixed;
+    left: 50%;
+    top: auto;
+    bottom: 1rem;
+    transform: translateX(-50%);
+    width: auto;
+    max-height: none;
+    padding: 0.5rem 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    z-index: 101;
+}
+
+/* 歌詞パネル。再生位置と同期した行をハイライトし、スクロールして追従する。 */
+.lyrics {
+    max-height: 45vh;
+    overflow-y: auto;
+    border-top: 1px solid #ddd;
+    padding-top: 0.5rem;
+}
+
+.lyrics ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.lyric-line {
+    padding: 0.35rem 0.5rem;
+    color: #888;
+    line-height: 1.4;
+}
+
+/* 再生位置に対応する歌詞行。強調して表示する。 */
+.lyric-line.active {
+    color: #1a1a1a;
+    font-weight: bold;
+    background: #e0e7ff;
+    border-radius: 4px;
+}
+
+.lyrics-message {
+    color: #888;
+    text-align: center;
+    margin: 0.5rem 0;
 }
 
 @media (max-width: 600px) {

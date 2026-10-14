@@ -34,9 +34,11 @@ RUN python -m playwright install --with-deps && \
 # appuser's cache location avoids permission issues with ``/root``.
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/appuser/.cache/ms-playwright
 
-# Copy application source (read‑only mount will override during dev)
+# コードから参照されていない mc alias 設定（config.json）の COPY を削除する。
+# config.json は .gitignore で除外された秘密情報を含むため CI の checkout 上に
+# 存在せず、COPY 自体がビルド失敗の原因になっていた。実行時に読み込む箇所はない。
+# ソースのみコピーする（read-only mount は dev 時に上書きする）。
 COPY backend/ ./backend/
-COPY config.json .
 
 # Use a non‑root user for runtime security
 USER appuser

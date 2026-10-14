@@ -200,17 +200,125 @@ async def list_all_tracks():
             detail="service unavailable",
         ) from exc
 
+
+# ---------------------------------------------------------------------------
+# Album listing + album-detail endpoints (Navidrome-only data source)
+# ---------------------------------------------------------------------------
+
+
+class AlbumListResponse(BaseModel):
+    albums: list[dict[str, Any]]
+
+
+class AlbumDetailResponse(BaseModel):
+    album_id: str
+    tracks: list[dict[str, Any]]
+
+
+@app.get("/api/v1/albums", response_model=AlbumListResponse)
+async def list_albums():
+    """Return the album list from Navidrome.
+
+    The album list is fetched from the ``list_albums`` Navidrome client
+    method (``/rest/getAlbums``). Local directory fallback is
+    intentionally disabled.
+    """
+    try:
+        client = get_client()
+        response = await client.list_albums()
+        return AlbumListResponse(albums=response.get("albums", []))
+    except Exception as exc:  # pragma: no cover - 防御的
+        logger.error("[list_albums] error: %r", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="service unavailable",
+        ) from exc
+
+
+@app.get("/api/v1/albums/{album_id}", response_model=AlbumDetailResponse)
+async def get_album_detail(album_id: str):
+    """Return the tracks contained in a single album.
+
+    The album detail is fetched from the ``get_album_tracks`` Navidrome
+    client method (``/rest/getAlbumById``). Local directory fallback is
+    intentionally disabled.
+    """
+    try:
+        client = get_client()
+        # Navidrome のアルバム詳細（トラック一覧）を取得する。ローカル走査への
+        # フォールバックは設計方針により禁止しており、失敗時は 503 を返す。
+        response = await client.get_album_tracks(album_id)
+        return AlbumDetailResponse(
+            album_id=response.get("album_id", album_id),
+            tracks=response.get("tracks", []),
+        )
+    except Exception as exc:  # pragma: no cover - 防御的
+        logger.error("[get_album_detail] error: %r", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="service unavailable",
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# 歌詞エンドポイント（OpenSubsonic の getLyricsBySongId を使用）
+# ---------------------------------------------------------------------------
+
+
+class LyricLine(BaseModel):
+    """歌詞の1行。``start`` は曲頭からのミリ秒 offset。"""
+
+    start: int
+    text: str
+
+
+class LyricsResponse(BaseModel):
+    """曲の歌詞応答。``synced`` は同期歌詞（.lrc）かどうか。"""
+
+    track_id: str
+    synced: bool
+    lines: list[LyricLine]
+
+
+@app.get("/api/v1/lyrics/{track_id}", response_model=LyricsResponse)
+async def get_lyrics(track_id: str):
+    """曲1曲分の歌詞を Navidrome から返す（同期歌詞のみ）。
+
+    歌詞は Navidrome の OpenSubsonic ``getLyricsBySongId`` から取得する。
+    DB へ保存されず ``.lrc`` サイドカーファイルから要求時に読まれるため、
+    旧 ``getLyrics`` 端点では空になる。歌詞が無い曲は ``lines: []`` を返す。
+    """
+    try:
+        client = get_client()
+        # Navidrome へ歌詞リクエストを送信する（読み取り専用、書き込みはしない）。
+        response = await client.get_lyrics(track_id)
+        return LyricsResponse(
+            track_id=response.get("track_id", track_id),
+            synced=bool(response.get("synced", False)),
+            lines=[LyricLine(**line) for line in response.get("lines", [])],
+        )
+    except Exception as exc:  # pragma: no cover - 防御的
+        logger.error("[get_lyrics] error: %r", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="service unavailable",
+        ) from exc
+
+
 # ---------------------------------------------------------------------------
 # Frontend static files
 # ---------------------------------------------------------------------------
-# Serve UI static files from the frontend directory inside the container.
-# This mount is placed after API routes so that the API endpoints are matched
-# before the static file fallback.
+# Serve UI static files from the frontend/dist directory inside the container.
+# The frontend is built with Vite (node image, frontend/Dockerfile) and the
+# build output is placed in frontend/dist. This mount is placed after API routes
+# so that the API endpoints are matched before the static file fallback.
 # FastAPI checks routes first, then falls back to mounted applications, but
 # moving the mount clarifies intent and avoids potential path‑resolution
 # edge cases in testing environments.
+# NOTE: frontend/dist must be built before the backend starts (e.g. via
+# `docker compose build frontend` or `npm run build` in frontend/).
 app.mount(
     "/",
-    StaticFiles(directory="/app/frontend", html=True),
+    StaticFiles(directory="/app/frontend/dist", html=True),
     name="frontend",
 )

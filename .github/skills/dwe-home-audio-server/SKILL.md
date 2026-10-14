@@ -410,16 +410,19 @@ MVP が完了したとみなす条件は次の通り。
 make up          # Docker Compose で全サービスを起動 (初回はイメージをビルド)
 make down        # 停止・削除
 make test        # コンテナ内 pytest を実行
-make lint        # ruff でコードを静的解析
+make test-frontend # コンテナ内 Vitest（frontend-test サービス）を実行
+make lint        # ruff・スキルチェック・ポリシーリンターを実行
 make logs        # サービスログを tail -f で表示
 make shell       # バックエンドコンテナにシェルで入る
 make sync        # 同期スクリプトの実行 (ローカル clone 更新)
-make verify      # ビルド・テスト・Lint をまとめて実行
+make verify      # ビルド・テスト・フロントエンドテスト・Lint をまとめて実行
 ```
 
-`make verify` は **ビルド → テスト → Lint** を順に行い、CI と同等
-のチェックをローカルで手軽に走らせることができます。Makefile は
-`.PHONY` でターゲットを明示し、インデントはタブで記述しています。
+`make verify` は **ビルド → pytest → Vitest → Lint** を順に行い、CI
+（`.github/workflows/ci.yml`）と同等のチェックをローカルで手軽に
+走らせることができます。Makefile は `.PHONY` でターゲットを明示し、
+インデントはタブで記述しています。`Node` 依存はホストへインストール
+せず、`frontend/test.Dockerfile` のイメージ内で `npm ci` により解決します。
 
 これらのコマンドは **Docker 環境が利用可能** なことが前提です。Docker
 や Docker Compose がインストールされていない環境では実行できません。

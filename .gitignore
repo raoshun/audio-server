@@ -26,3 +26,5 @@ navidrome/
 sync/
 
 model_cache/
+
+node_modules/

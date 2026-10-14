@@ -1,0 +1,103 @@
+name: CI
+
+# 共通コーディング規則（common-coding-rules）どおり、プルリクエストごとに
+# Docker Compose 上のコンテナへユニットテスト・Lint を実行する。
+# ローカル環境と同一の依存解決・実行環境を保証するため、ホストへ
+# pip や npm をインストールする方式は採用しない。
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  # E2E は音楽ライブラリ（Navidrome のカタログ）が必要なため、
+  # データを持つ環境で手動実行する入口も用意する。
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint（ruff・スキルチェック・ポリシーリンター）
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare mount directories
+        # compose は /srv/dwe 配下を bind-mount する。ランナー上に存在しない
+        # ため作成する。navidrome は UID/GID 1000 で動くので、データ領域は
+        # その所有者へ渡す（music は read-only マウントで書き込み不要）。
+        run: |
+          sudo mkdir -p /srv/dwe/navidrome/data /srv/dwe/music
+          sudo chown 1000:1000 /srv/dwe/navidrome/data
+
+      - name: Build test image
+        run: docker compose build test
+
+      - name: Run lint
+        # ruff、check_skills.py（SKILL.md の日本語品質）、
+        # policy_linter.py（MinIO 直接書き込み・秘密平文・日本語コメント）を実行する。
+        run: make lint
+
+  backend-tests:
+    name: Backend テスト（pytest）
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare mount directories
+        # `docker compose run --rm test` は depends_on により navidrome も
+        # 起動する。bind-mount 先が存在しないため、ここで用意する。
+        run: |
+          sudo mkdir -p /srv/dwe/navidrome/data /srv/dwe/music
+          sudo chown 1000:1000 /srv/dwe/navidrome/data
+
+      - name: Build test image
+        run: docker compose build test
+
+      - name: Run pytest
+        # Playwright E2E は live backend が必要なため、このジョブでは
+        # Playwright マーカーを除外してユニットテストのみ実行する。
+        run: docker compose run --rm test pytest -q -m "not playwright"
+
+  frontend-tests:
+    name: Frontend テスト（Vitest）
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Vitest
+        # Vitest は fetch をモック化するため backend への依存がない。
+        run: docker compose run --rm frontend-test
+
+  # E2E（Playwright）は live backend と Navidrome のカタログ、さらに
+  # Subsonic API の認証情報が必要。GitHub 管理ランナーには音楽ライブラリが
+  # なく、認証情報を平文でワークフローへ書き込むことは共通コーディング規則
+  # （秘密情報の平文禁止）に反するため、self-hosted runner 上でのみ実行する。
+  # ランナーが存在しない場合はジョブをスキップし、PR 単位のチェックは
+  # lint / backend / frontend の3ジョブで担保する。
+  e2e:
+    name: E2E テスト（Playwright）
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare local clone directories
+        # backend は frontend/dist を read-only bind-mount でサーブする。
+        # コミット済みの dist が存在することを確認する。
+        run: test -f frontend/dist/index.html
+
+      - name: Build images
+        run: docker compose build test backend
+
+      - name: Start backend
+        # `make up` は全サービス（lyrics は GPU 予約）を起動するため、
+        # E2E では backend と navidrome だけを起動する。
+        # 認証情報は self-hosted runner の .env（Git 管理外）から読む。
+        run: docker compose up -d navidrome backend
+
+      - name: Run Playwright test
+        run: docker compose run --rm test pytest -q -m playwright

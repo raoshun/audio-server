@@ -1,5 +1,4 @@
 import asyncio
-import json
 import urllib.error
 
 # 依存関係を増やさないため、組み込み urllib を使用して HTTP リクエストを行います。
@@ -10,19 +9,6 @@ from urllib.parse import quote, urlencode
 
 # 兄弟パッケージ ``app`` から Settings をインポートします。
 from backend.app.config import Settings
-
-# ---------------------------------------------------------------------------
-# 互換性用プレースホルダー (テストで差し替えられる)
-# ---------------------------------------------------------------------------
-
-class ClientSession:  # pragma: no cover
-    """テストで差し替えられる ``ClientSession`` 用プレースホルダー。
-    実装上は使用せず、型チェックと import 解消のみ目的とします。
-    """
-
-    async def get(self, *args, **kwargs):  # pragma: no cover
-        """非同期 GET のスタブ。テストでモックが提供されます。"""
-        raise NotImplementedError("ClientSession.get stub; patch in tests.")
 
 class NavidromeClient:
     """DWE バックエンドが利用する Navidrome API 用非同期クライアント。
@@ -116,27 +102,63 @@ class NavidromeClient:
         raise ValueError(f"Navidrome でアーティスト '{name}' が見つかりませんでした")
 
     async def list_albums(self) -> dict:
-        """アルバム一覧を JSON で取得する。
-        テストで ``ClientSession`` が差し替えられる場合はそれを使用し、失敗したら urllib にフォールバック。
+        """アルバム一覧を取得する。
+
+        Navidrome の ``getAlbums`` 端点は 404 を返すため、``search3`` の
+        ``album`` フィルタを利用し、``dwe_artist`` に一致するアルバムを返す。
+        各アルバムは ``{id, title, artist}`` 形式の辞書として返す。
         """
-        try:
-            session = ClientSession()
-            response = await session.get(
-                f"{self.base_url.rstrip('/')}/rest/getAlbums",
-                timeout=self.timeout,
-            )
-            return await response.json()
-        except (
-            urllib.error.URLError,
-            urllib.error.HTTPError,
-        ):  # pragma: no cover
-            def _fetch_json():
-                with urllib.request.urlopen(
-                    f"{self.base_url.rstrip('/')}/rest/getAlbums",
-                    timeout=self.timeout,
-                ) as response:
-                    return json.load(response)
-            return await asyncio.to_thread(_fetch_json)
+        root = await self._get_xml(
+            "/rest/search3", {"album": self.dwe_artist},
+        )
+        # <album> 要素を全走査し、一覧を構築する。タグには名前空間が付く
+        # ことがあるためローカルタグ名で比較する。
+        albums: list[dict[str, str | None]] = []
+        for el in root.iter():
+            if el.tag.split("}")[-1] == "album":
+                albums.append({
+                    "id": el.attrib.get("id"),
+                    "title": el.attrib.get("name"),
+                    "artist": el.attrib.get("artist"),
+                })
+        return {"albums": albums}
+
+    async def get_album_tracks(self, album_id: str) -> dict:
+        """アルバムIDから収録トラック一覧を取得する。
+
+        Subsonic の ``getAlbumById`` 端点が 404 を返すため、``search3`` の
+        名前クエリでアルバムに属する曲を取得する。各曲の ``parent`` 属性が
+        ``album_id`` と一致するため、それで最終的に絞り込む。
+        各トラックは ``{id, title, artist, album, albumId}`` 形式の辞書として返す。
+        ローカルの音楽ディレクトリへはフォールバックしない。
+        """
+        # album_id からアルバム名を取得する。list_albums() で取得した一覧から
+        # ID をキーにタイトルを検索する。
+        album_name: str | None = None
+        for album in (await self.list_albums())["albums"]:
+            if album["id"] == album_id:
+                album_name = album["title"]
+                break
+        # アルバム名が見つからない場合は空結果を返す。
+        if album_name is None:
+            return {"album_id": album_id, "tracks": []}
+        # search3 の名前クエリで該当アルバムに属する曲を取得する。``type=track``
+        # を指定して曲のみを返し、``size`` を大きめに設定して一覧を網羅する。
+        search_params = {"query": album_name, "type": "track", "size": "1000"}
+        root = await self._get_xml("/rest/search3", search_params)
+        # <song> 要素を全走査し、アルバムID（parent 属性）でフィルターする。
+        # タグには名前空間が付くことができるためローカルタグ名で比較する。
+        tracks: list[dict[str, str | None]] = []
+        for el in root.iter():
+            if el.tag.split("}")[-1] == "song" and el.attrib.get("parent") == album_id:
+                tracks.append({
+                    "id": el.attrib.get("id"),
+                    "title": el.attrib.get("title"),
+                    "artist": el.attrib.get("artist"),
+                    "album": el.attrib.get("album"),
+                    "albumId": el.attrib.get("parent"),
+                })
+        return {"album_id": album_id, "tracks": tracks}
 
     async def search_music(
         self,
@@ -205,6 +227,43 @@ class NavidromeClient:
                 tracks.append(dict(el.attrib))
 
         return {"results": tracks}
+
+    async def get_lyrics(self, track_id: str) -> dict:
+        """曲の歌詞を取得する（OpenSubsonic の ``getLyricsBySongId``）。
+
+        Navidrome は DB の ``media_file.lyrics`` 列へ歌詞を保存しておらず、
+        ``.lrc`` サイドカーファイルを要求時に読み取る（scanner は音声以外の
+        拡張子を索引しないため、旧 ``getLyrics`` 端点ではサイドカーのみでは
+        空を返す）。そのため OpenSubsonic の ``getLyricsBySongId`` を使用する。
+
+        返り値は ``{track_id, synced, lines: [{start, text}]}``。``start`` は
+        曲頭からのミリ秒 offset で、フロントエンドの ``timeupdate``（秒）と
+        比較するためミリ秒のまま保持する。歌詞が無い曲は ``lines: []``。
+        """
+        root = await self._get_xml("/rest/getLyricsBySongId", {"id": track_id})
+
+        lines: list[dict[str, int | str]] = []
+        synced = False
+        # 名前空間が付くことがあるため、ローカルタグ名で比較する。
+        for el in root.iter():
+            local_name = el.tag.split("}")[-1]
+            if local_name == "structuredLyrics":
+                # ``synced`` は "true"/"false" の文字列属性。同期歌詞のみ扱う。
+                synced = el.attrib.get("synced") == "true"
+            elif local_name == "line":
+                text = (el.text or "").strip()
+                if not text:
+                    # 空行（区切り）は表示しない。
+                    continue
+                start_raw = el.attrib.get("start", "0")
+                try:
+                    start_ms = int(start_raw)
+                except ValueError:
+                    # 数値でない start は行の開始時刻として扱えないためスキップする。
+                    continue
+                lines.append({"start": start_ms, "text": text})
+
+        return {"track_id": track_id, "synced": synced, "lines": lines}
 
     @staticmethod
     def _build_query_string(params: dict) -> str:
