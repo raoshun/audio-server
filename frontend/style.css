@@ -131,8 +131,13 @@ header h1 {
     z-index: 100;
 }
 
-/* 中央再生ウィンドウ。暗転上に表示されるカード。 */
+/* 中央再生ウィンドウ。暗転オーバーレイとは兄弟要素なので、暗転が
+   最小化で消えてもウィンドウ（またはバー）を残せる。画面中央に固定する。 */
 .player-modal {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     background: #fff;
     border-radius: 8px;
     padding: 1rem;
@@ -142,6 +147,7 @@ header h1 {
     flex-direction: column;
     gap: 0.75rem;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    z-index: 101;
 }
 
 /* ウィンドウ上部の曲情報と閉じるボタン。 */
@@ -167,6 +173,14 @@ header h1 {
     font-size: 0.9rem;
 }
 
+/* ヘッダ右側のボタン群（最小化・表示・閉じる）。 */
+.modal-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+#minimizeModalBtn,
+#showModalBtn,
 #closeModalBtn {
     padding: 0.4rem 0.8rem;
     border: 1px solid #ddd;
@@ -175,8 +189,25 @@ header h1 {
     cursor: pointer;
 }
 
+#minimizeModalBtn:hover,
+#showModalBtn:hover,
 #closeModalBtn:hover {
     background: #e0e7ff;
+}
+
+/* 最小化時のバー。暗転は解かれているので、画面下部に常時表示する。
+   曲情報と本文は v-if / v-show で非表示にし、2ボタンだけ残す。 */
+.player-modal.minimized {
+    position: fixed;
+    left: 50%;
+    top: auto;
+    bottom: 1rem;
+    transform: translateX(-50%);
+    width: auto;
+    max-height: none;
+    padding: 0.5rem 0.75rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    z-index: 101;
 }
 
 /* 歌詞パネル。再生位置と同期した行をハイライトし、スクロールして追従する。 */

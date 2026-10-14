@@ -15,13 +15,23 @@ let alertMock: ReturnType<typeof vi.fn>;
 
 // jsdom は HTMLMediaElement の load()/play() を実装していないため、
 // テストでは no-op の mock に差し替える（呼び出し自体を検証する）。
-function stubMedia(el: Element): { load: ReturnType<typeof vi.fn>; play: ReturnType<typeof vi.fn> } {
-  const media = el as unknown as { load: () => void; play: () => Promise<void> };
+function stubMedia(el: Element): {
+  load: ReturnType<typeof vi.fn>;
+  play: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
+} {
+  const media = el as unknown as {
+    load: () => void;
+    play: () => Promise<void>;
+    pause: () => void;
+  };
   const load = vi.fn();
   const play = vi.fn(() => Promise.resolve());
+  const pause = vi.fn();
   media.load = load;
   media.play = play;
-  return { load, play };
+  media.pause = pause;
+  return { load, play, pause };
 }
 
 // fetch のレスポンスを再現するためのヘルパー。
@@ -35,11 +45,17 @@ function mockFetchResponse(data: unknown, ok = true, status = 200) {
 }
 
 // URL を照合して指定レスポンスを返す fetch モックを構成する。
+// 1テストで複数の URL を扱う（検索と歌詞など）ため、routes へ蓄積する。
+// routes は beforeEach でリセットされる。
+const routes: Record<string, { response: unknown; ok: boolean; status: number }> = {};
+
 function mockFetch(url: string, response: unknown, ok = true, status = 200) {
+  routes[url] = { response, ok, status };
   fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
     const reqUrl = String(input);
-    if (reqUrl === url) {
-      return mockFetchResponse(response, ok, status);
+    const route = routes[reqUrl];
+    if (route) {
+      return mockFetchResponse(route.response, route.ok, route.status);
     }
     return mockFetchResponse({ error: 'unexpected url' }, false, 404);
   });
@@ -60,6 +76,8 @@ describe('App.vue', () => {
   beforeEach(() => {
     fetchMock = vi.fn();
     alertMock = vi.fn();
+    // URL ルートをテストごとにリセットする（前テストのルートが残らないように）。
+    for (const key of Object.keys(routes)) delete routes[key];
     // グローバル fetch と alert をモックに差し替える。
     // @ts-expect-error - テスト環境ではグローバルを差し替える。
     global.fetch = fetchMock;
@@ -382,7 +400,7 @@ describe('App.vue', () => {
       expect(wrapper.find('#player').attributes('src')).toContain('/api/v1/track/stream/t1');
     });
 
-    it('閉じるボタンでオーバーレイを閉じ、再生は継続する', async () => {
+    it('閉じるボタンで再生を停止し、ウィンドウを閉じる', async () => {
       mockFetch('/api/v1/search/music', { results: [{ id: 't1', title: 'Song' }] });
       mockFetch('/api/v1/lyrics/t1', { track_id: 't1', synced: false, lines: [] });
 
@@ -390,16 +408,60 @@ describe('App.vue', () => {
       await wrapper.find('#query').setValue('Song');
       await wrapper.find('#searchBtn').trigger('click');
       await flushPromises();
+
+      const media = stubMedia(wrapper.find('#player').element);
       await wrapper.findAll('#resultList li')[0].trigger('click');
       await flushPromises();
 
       await wrapper.find('#closeModalBtn').trigger('click');
       await flushPromises();
 
-      // オーバーレイは閉じるが、プレイヤーと再生元はそのまま残る。
+      // 閉じるボタンは pause() を呼び、ウィンドウを非表示にする。
+      expect(media.pause).toHaveBeenCalled();
+      expect(wrapper.find('.player-modal').attributes('style')).toContain('none');
       expect(wrapper.find('.overlay').attributes('style')).toContain('none');
-      expect(wrapper.find('.player').attributes('style')).toContain('block');
-      expect(wrapper.find('#player').attributes('src')).toContain('/api/v1/track/stream/t1');
+    });
+
+    it('最小化ボタンは再生を継続し、表示と閉じるの2ボタンへ切り替える', async () => {
+      mockFetch('/api/v1/search/music', { results: [{ id: 't1', title: 'Song' }] });
+      mockFetch('/api/v1/lyrics/t1', {
+        track_id: 't1',
+        synced: true,
+        lines: [{ start: 0, text: 'Line one.' }],
+      });
+
+      const wrapper = mount(App);
+      await wrapper.find('#query').setValue('Song');
+      await wrapper.find('#searchBtn').trigger('click');
+      await flushPromises();
+
+      const media = stubMedia(wrapper.find('#player').element);
+      await wrapper.findAll('#resultList li')[0].trigger('click');
+      await flushPromises();
+
+      await wrapper.find('#minimizeModalBtn').trigger('click');
+      await flushPromises();
+
+      // 最小化時は暗転が解かれ、曲情報・歌詞パネルは隠れる。
+      expect(wrapper.find('.overlay').attributes('style')).toContain('none');
+      expect(wrapper.find('.player-modal').classes()).toContain('minimized');
+      expect(wrapper.find('.modal-title').exists()).toBe(false);
+
+      // 表示と閉じるの2ボタンだけになり、最小化ボタンは消える。
+      expect(wrapper.find('#showModalBtn').exists()).toBe(true);
+      expect(wrapper.find('#closeModalBtn').exists()).toBe(true);
+      expect(wrapper.find('#minimizeModalBtn').exists()).toBe(false);
+
+      // 再生は継続する（pause() は呼ばれない）。
+      expect(media.pause).not.toHaveBeenCalled();
+
+      // 「表示」で直前の画面へ戻り、操作を再開できる。
+      await wrapper.find('#showModalBtn').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find('.overlay').attributes('style')).toContain('block');
+      expect(wrapper.find('.modal-title').text()).toBe('Song');
+      expect(wrapper.find('#lyricsList li').text()).toBe('Line one.');
     });
   });
 

@@ -106,6 +106,10 @@ docker compose up -d
    `GET /api/v1/lyrics/{track_id}` から取得する（Navidrome の OpenSubsonic
    `getLyricsBySongId` を参照し、`start` はミリ秒単位）。
 
+   閉じるボタンは再生を停止してウィンドウを閉じる。最小化ボタンは再生を
+   継続したままウィンドウを「表示」と「閉じる」の2ボタンだけのバーへ
+   切り替え、暗転を解いて直前の画面から操作を再開できる。
+
 3. **サービス停止** – 作業が終わったら次のコマンドで停止します:
 
    ```bash

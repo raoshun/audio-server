@@ -67,19 +67,33 @@
         </ul>
       </section>
 
-      <!-- 暗転オーバーレイと中央再生ウィンドウ。曲を選択すると表示される。
+      <!-- 暗転レイヤー。曲を選択すると表示され、背景を暗くする。
+           最小化時は表示せず、直前の画面を操作できる状態へ戻す。 -->
+      <div class="overlay" :style="{ display: modalVisible && !modalMinimized ? 'block' : 'none' }"></div>
+
+      <!-- 中央再生ウィンドウ。最小化時は「表示」と「閉じる」の2ボタンだけのバーへ
+           縮小する。閉じるボタンは再生を停止し、最小化ボタンは再生を継続する。
            .player と #player は既存テスト契約（Playwright / Vitest）が参照する
            ため、要素名・クラス・display のスタイル束縛は変更しない。 -->
-      <div class="overlay" :style="{ display: modalVisible ? 'block' : 'none' }">
-        <div class="player-modal">
-          <div class="modal-header">
-            <div class="modal-track">
-              <span class="modal-title">{{ modalTitle }}</span>
-              <span class="modal-artist">{{ modalArtist }}</span>
-            </div>
+      <div
+        class="player-modal"
+        :class="{ minimized: modalMinimized }"
+        :style="{ display: modalVisible ? 'flex' : 'none' }"
+      >
+        <div class="modal-header">
+          <div class="modal-track" v-if="!modalMinimized">
+            <span class="modal-title">{{ modalTitle }}</span>
+            <span class="modal-artist">{{ modalArtist }}</span>
+          </div>
+          <div class="modal-buttons">
+            <button id="minimizeModalBtn" type="button" v-if="!modalMinimized" @click="minimizeModal">最小化</button>
+            <button id="showModalBtn" type="button" v-if="modalMinimized" @click="showModal">表示</button>
             <button id="closeModalBtn" type="button" @click="closeModal">閉じる</button>
           </div>
+        </div>
 
+        <!-- 最小化時は曲情報・プレイヤー・歌詞を隠し、2ボタンだけ残す。 -->
+        <div class="modal-body" v-show="!modalMinimized">
           <section class="player" :style="{ display: playerVisible ? 'block' : 'none' }">
             <audio
               id="player"
@@ -140,6 +154,9 @@ const audioEl = ref<HTMLAudioElement | null>(null);
 
 // モーダル（暗転オーバーレイ）の表示。曲を選択すると表示される。
 const modalVisible = ref(false);
+// 最小化状態。true のときは「表示」と「閉じる」の2ボタンだけのバーになり、
+// 暗転は解かれて直前の画面を操作できる（再生は継続する）。
+const modalMinimized = ref(false);
 // モーダルヘッダへ表示する曲情報。
 const modalTitle = ref('');
 const modalArtist = ref('');
@@ -252,9 +269,35 @@ function onTimeUpdate(): void {
   syncLyricIndex();
 }
 
-// 暗転オーバーレイを閉じる。再生そのものは停止しない（vanilla の挙動を維持）。
+// 再生を停止する。pause() で再生を止め、キューを空にすることで
+// 曲終了時の自動次曲送りも止める。
+function stopPlayback(): void {
+  const el = audioEl.value;
+  if (el && typeof el.pause === 'function') {
+    el.pause();
+  }
+  queue.value = [];
+  activeTrackId.value = null;
+  playerVisible.value = false;
+}
+
+// 暗転オーバーレイを閉じる。閉じるボタンは再生を停止する。
 function closeModal(): void {
+  stopPlayback();
   modalVisible.value = false;
+  modalMinimized.value = false;
+}
+
+// 最小化する。再生は継続したまま、暗転を解いて直前の画面を操作可能にする。
+// ヘッダは「表示」と「閉じる」の2ボタンだけのバーへ切り替わる。
+function minimizeModal(): void {
+  modalMinimized.value = true;
+}
+
+// 最小化から復帰し、直前の表示（曲情報・プレイヤー・歌詞）へ戻す。
+// 再生は継続したままなので、操作を再開できる。
+function showModal(): void {
+  modalMinimized.value = false;
 }
 
 // src を設定して再生を開始する。vanilla（app.js）と同一に load() を明示し、
@@ -265,7 +308,9 @@ async function startPlayback(id: string): Promise<void> {
   playerVisible.value = true;
   activeTrackId.value = id;
   // 曲を選択したときに暗転オーバーレイの中央再生ウィンドウを表示する。
+  // 最小化された状態から新しい曲を選んだ場合は、フル表示へ戻す。
   modalVisible.value = true;
+  modalMinimized.value = false;
   const info = lookupTrack(id);
   modalTitle.value = info ? displayName(info) : 'Unnamed track';
   modalArtist.value = info?.artist ?? '';

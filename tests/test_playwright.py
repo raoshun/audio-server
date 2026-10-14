@@ -91,3 +91,21 @@ def test_user_flow(page):
     lyrics = page.locator(".lyrics")
     expect(lyrics).to_be_visible()
     expect(lyrics.locator("#lyricsList li, .lyrics-message").first).to_be_visible(timeout=10000)
+
+    # 7. 最小化ボタン: 暗転が解かれ、表示と閉じるの2ボタンだけになる。
+    #    再生は継続するため、プレイヤー要素は DOM に残る（v-show で非表示）。
+    page.locator("#minimizeModalBtn").click()
+    expect(overlay).not_to_be_visible()
+    expect(page.locator("#showModalBtn")).to_be_visible()
+    expect(page.locator("#closeModalBtn")).to_be_visible()
+    expect(page.locator("#minimizeModalBtn")).not_to_be_visible()
+
+    # 「表示」で直前の画面へ戻れることを確認する。
+    page.locator("#showModalBtn").click()
+    expect(overlay).to_be_visible()
+
+    # 8. 閉じるボタン: 再生を停止し、ウィンドウを閉じる。
+    page.locator("#closeModalBtn").click()
+    expect(page.locator(".player-modal")).not_to_be_visible()
+    # pause() が呼ばれているため、audio 要素は paused になる。
+    assert audio.evaluate("el => el.paused") is True
