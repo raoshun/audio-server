@@ -114,6 +114,71 @@ header h1 {
     background: #f0f0f0;
 }
 
+/* プレイリスト（Issue #12）。検索欄と同じ配置で指示入力と作成・順再生ボタンを並べる。 */
+.playlist {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    justify-content: center;
+}
+
+.playlist input {
+    flex: 1 1 auto;
+    max-width: 300px;
+    padding: 0.5rem;
+    font-size: 1rem;
+}
+
+.playlist button {
+    padding: 0.5rem 1rem;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.playlist-results {
+    max-width: 600px;
+    margin: 0 auto 1rem auto;
+}
+
+.playlist-results .playlist-meta {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0 0 0.5rem 0;
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.playlist-results ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.playlist-results li {
+    padding: 0.5rem;
+    border-bottom: 1px solid #ddd;
+    cursor: pointer;
+}
+
+.playlist-results li:hover {
+    background: #f0f0f0;
+}
+
+.playlist-results li.active {
+    background: #e0e7ff;
+    font-weight: bold;
+}
+
+.playlist-title {
+    display: block;
+}
+
+.playlist-reason {
+    display: block;
+    font-size: 0.85rem;
+    color: #666;
+}
+
 .player {
     text-align: center;
     margin-top: 1rem;

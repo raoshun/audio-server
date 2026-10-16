@@ -18,6 +18,39 @@ class Settings(BaseSettings):
         default=Path("/srv/dwe/music"),
         description="Base directory containing music files.")
 
+    # LLM（Ollama）接続設定（Issue #12）。
+    # Ollama は家庭内ネットワーク上のローカルサービスであり認証情報を持たない
+    # ため、API キーは持たない。接続先・モデル・タイムアウトは環境変数のみから
+    # 取得する（平文の秘密情報はコードへ置かない）。
+    # コンテナ内からホストの Ollama へ到達するため、既定値は
+    # `host.docker.internal`（docker-compose の extra_hosts で解決）とする。
+    ollama_url: HttpUrl = Field(
+        default="http://host.docker.internal:11434",
+        description="Ollama API のベース URL。")
+    ollama_model: str = Field(
+        default="gemma4:e2b",
+        description="プレイリスト生成に使う軽量モデル名。")
+    ollama_timeout_seconds: int = Field(default=120, gt=0)
+    ollama_num_predict: int = Field(
+        default=2048,
+        gt=0,
+        description="LLM 応答の最大トークン数（構造化出力の切り詰め防止）。",
+    )
+
+    # プレイリスト生成の上限（Issue #12）。LLM へ渡すカタログはこの件数で切る。
+    playlist_catalog_limit: int = Field(
+        default=200,
+        gt=0,
+        description="LLM へ渡す Navidrome カタログの最大トラック数。")
+    playlist_default_size: int = Field(
+        default=10,
+        gt=0,
+        description="指示で曲数が指定されていない場合の既定のプレイリスト長。")
+    playlist_max_size: int = Field(
+        default=50,
+        gt=0,
+        description="プレイリストの最大曲数。")
+
     # 以下のパスは ``dwe_music_dir`` から派生します。
     # 読み取り専用プロパティとして公開され、ベースディレクトリが変更されたときに自動的に更新されます。
 
