@@ -67,6 +67,45 @@
         </ul>
       </section>
 
+      <!-- プレイリスト作成（Issue #12）。チャット指示を LLM（Ollama）へ
+           送信し、Navidrome カタログ上のトラックを選ばせる。
+           結果の li は data-id を持ち、クリックで単体再生、
+           「順再生」ボタンは選曲順のままキューへ入れる。 -->
+      <section class="playlist">
+        <input
+          type="text"
+          id="playlistInstruction"
+          v-model="playlistInstruction"
+          placeholder="プレイリストへの指示を入力（例: 静かな曲から始めて）"
+          @keydown.enter="createPlaylist"
+        />
+        <button id="createPlaylistBtn" type="button" @click="createPlaylist">作成</button>
+        <button id="playPlaylistBtn" type="button" @click="playPlaylistSequential">順再生</button>
+      </section>
+
+      <!-- 生成されたプレイリスト。LLM の選曲順を維持して表示する。 -->
+      <section
+        class="playlist-results"
+        :style="{ display: playlistItems.length > 0 ? 'block' : 'none' }"
+      >
+        <p class="playlist-meta">
+          <span id="playlistModel">{{ playlistModel }}</span>
+          <span id="playlistCount">{{ playlistItems.length }}曲</span>
+        </p>
+        <ul id="playlistList">
+          <li
+            v-for="item in playlistItems"
+            :key="item.id"
+            :data-id="item.id"
+            :class="{ active: item.id === activeTrackId }"
+            @click="playTrack(item.id)"
+          >
+            <span class="playlist-title">{{ item.title }}</span>
+            <span class="playlist-reason">{{ item.reason }}</span>
+          </li>
+        </ul>
+      </section>
+
       <!-- 暗転レイヤー。曲を選択すると表示され、背景を暗くする。
            最小化時は表示せず、直前の画面を操作できる状態へ戻す。 -->
       <div class="overlay" :style="{ display: modalVisible && !modalMinimized ? 'block' : 'none' }"></div>
@@ -169,6 +208,11 @@ const activeLyricIndex = ref(-1);
 // 歌詞パネル要素（アクティブ行の自動スクロールに使用）。
 const lyricsPanel = ref<HTMLElement | null>(null);
 
+// プレイリスト（Issue #12）。LLM が選んだ曲と選曲理由、使用モデル名を保持する。
+const playlistInstruction = ref('');
+const playlistItems = ref<PlaylistItem[]>([]);
+const playlistModel = ref('');
+
 // 歌詞の1行（API 契約と同一。start は曲頭からのミリ秒 offset）。
 interface LyricLineData {
   start: number;
@@ -192,6 +236,13 @@ interface Album {
   title: string;
   artist: string;
 }
+// プレイリスト1曲（POST /api/v1/playlist の playlist 項目と同一契約）。
+interface PlaylistItem {
+  id: string;
+  title: string;
+  artist?: string;
+  reason?: string;
+}
 
 // 表示名は title を優先し、無ければ name またはプレースホルダーを使う（vanilla と同一）。
 function displayName(item: Track): string {
@@ -209,7 +260,10 @@ function lookupTrack(id: string): TrackInfo | null {
   const fromResults = results.value.find((item) => item.id === id);
   if (fromResults) return fromResults;
   const fromAlbum = albumTracks.value.find((item) => item.id === id);
-  return fromAlbum ?? null;
+  if (fromAlbum) return fromAlbum;
+  // プレイリスト（Issue #12）の曲もモーダルヘッダの表示元に含める。
+  const fromPlaylist = playlistItems.value.find((item) => item.id === id);
+  return fromPlaylist ?? null;
 }
 
 // 歌詞を取得する（GET /api/v1/lyrics/{track_id}）。
@@ -381,6 +435,44 @@ async function fetchAlbums(): Promise<void> {
   } catch {
     warn('アルバム一覧の取得に失敗しました');
   }
+}
+
+// プレイリストを作成する（POST /api/v1/playlist、Issue #12）。
+// 指示は JSON ボディとして送信する（LLM へ渡す文字列であり、URL へ連結しない）。
+// 失敗時は API のステータスに応じて警告する: 502 は LLM の出力不正、
+// 503 は Navidrome / Ollama 接続不可、422 は空指示。
+async function createPlaylist(): Promise<void> {
+  const trimmed = playlistInstruction.value.trim();
+  if (!trimmed) return;
+  try {
+    const resp = await fetch('/api/v1/playlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instruction: trimmed }),
+    });
+    if (!resp.ok) {
+      warn(`プレイリスト作成に失敗しました（HTTP ${resp.status}）`);
+      return;
+    }
+    const data = await resp.json();
+    playlistItems.value = Array.isArray(data.playlist) ? data.playlist : [];
+    playlistModel.value = typeof data.model === 'string' ? data.model : '';
+    if (playlistItems.value.length === 0) {
+      warn('プレイリストを作成できませんでした');
+    }
+  } catch {
+    warn('プレイリスト作成に失敗しました');
+  }
+}
+
+// プレイリストを LLM の選曲順のまま再生する（既存のキュー再生を再利用）。
+async function playPlaylistSequential(): Promise<void> {
+  const ids = playlistItems.value
+    .map((item) => item.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (ids.length === 0) return;
+  queue.value = ids;
+  await playNext();
 }
 
 // アルバムを選択すると、そのトラック一覧を取得してトラックリストを表示する。

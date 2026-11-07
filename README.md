@@ -110,6 +110,28 @@ docker compose up -d
    継続したままウィンドウを「表示」と「閉じる」の2ボタンだけのバーへ
    切り替え、暗転を解いて直前の画面から操作を再開できる。
 
+4. **プレイリスト作成（Issue #12）** – 指示入力欄へ自然言語の指示（例:
+   「静かな曲から始めて、最後に明るい曲へ」）を入力し「作成」ボタンを押すと、
+   LLM（Ollama の軽量モデル）が Navidrome カタログから曲を選ぶ。
+   表示されるプレイリストは LLM の選曲順を維持し、各曲には選曲理由が添えられる。
+   「順再生」ボタンは選曲順のままキューへ入れ、曲の終了で次の曲へ進む。
+
+   API は `POST /api/v1/playlist` で、`{"instruction": "...", "limit": 10}` を
+   JSON ボディとして送信する。LLM 出力は JSON schema で検証し、catalog に
+   存在しない id は除外される。接続先とモデル名は `.env` からのみ取得する
+   （`OLLAMA_URL`、`OLLAMA_MODEL`）。
+
+   ```bash
+   curl -fsS -X POST http://localhost:8000/api/v1/playlist \
+     -H 'Content-Type: application/json' \
+     -d '{"instruction": "静かな曲から始めて", "limit": 5}'
+   ```
+
+   LLM が応答しない場合は 503、出力が不正な場合は 502 を返す。
+   コンテナ内からホストの Ollama へ到達するため、`docker-compose.yml` の
+   `backend` サービスに `extra_hosts`（`host.docker.internal:host-gateway`）を
+   設定している。
+
 3. **サービス停止** – 作業が終わったら次のコマンドで停止します:
 
    ```bash

@@ -9,7 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.app.config import Settings
+from backend.app.llm_client import LlmError, LlmUnavailableError, get_llm_client
 from backend.app.navidrome_client import NavidromeClient
+from backend.app.playlist_service import PlaylistResult, create_playlist
 
 # Docker コンテナ内で stdout / stderr にログを出力するため、モジュールレベルのロギングを設定します。
 # これにより、現在 503 応答になるようなバリデーションやランタイムエラーが可視化されます。
@@ -40,6 +42,17 @@ class MusicSearchResponse(BaseModel):
     results: list[dict[str, Any]]
 
 
+class PlaylistRequest(BaseModel):
+    """プレイリスト作成要求（Issue #12）。
+
+    ``instruction`` はユーザーのチャット指示。LLM へ渡す文字列であり、
+    SQL や URL へ直接使用しない。
+    """
+
+    instruction: str = Field(..., min_length=1)
+    limit: int | None = Field(None, ge=1)
+
+
 def get_client() -> NavidromeClient:
     """Create the Navidrome client from app settings."""
     return NavidromeClient(Settings())
@@ -65,6 +78,43 @@ async def search_music(payload: MusicSearchRequest):
             status_code=503,
             detail="service unavailable",
         ) from exc
+
+
+@app.post("/api/v1/playlist", response_model=PlaylistResult)
+async def create_playlist_endpoint(payload: PlaylistRequest):
+    """チャット指示からプレイリストを作成する（Issue #12）。
+
+    音楽情報の取得元は Navidrome のみ。LLM は Ollama（設定された軽量モデル）
+    へ要求し、構造化 JSON として受け取る。LLM 出力の id は catalog 照合済みの
+    ため、ここで追加のサニタイションは不要。
+    """
+    settings = Settings()
+    # 上限は設定値でclampする（要求の limit が大きい場合は max を使う）。
+    limit = payload.limit or settings.playlist_default_size
+    limit = min(limit, settings.playlist_max_size)
+    logger.info("[create_playlist] instruction: %s (limit=%d)", payload.instruction, limit)
+
+    try:
+        # Navidrome は読み取り専用で参照する（MinIO への書き込みは行わない）。
+        navidrome = get_client()
+        # LLM 呼び出しは設定からのみ接続先を得る（秘密情報は扱わない）。
+        llm = get_llm_client()
+        return await create_playlist(payload.instruction, limit, navidrome, llm, settings)
+    except LlmUnavailableError as exc:
+        # Ollama へ接続できない場合は 503。詳細はログに残しレスポンスは固定文。
+        logger.error("[create_playlist] LLM unavailable: %r", exc)
+        raise HTTPException(status_code=503, detail="LLM service unavailable") from exc
+    except (LlmError, ValueError) as exc:
+        # LLM の出力が不正（JSON として読めない、期待した形ではない）は 502。
+        logger.error("[create_playlist] LLM output error: %r", exc)
+        raise HTTPException(status_code=502, detail="invalid LLM output") from exc
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover - API behavior guard
+        # Navidrome 障害などの想定外エラーは 503。例外詳細はログのみへ記録する。
+        logger.error("[create_playlist] error: %r", exc)
+        raise HTTPException(status_code=503, detail="service unavailable") from exc
+
 
 # ---------------------------------------------------------------------------
 # Frontend static files

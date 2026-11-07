@@ -49,6 +49,11 @@ services:
       - ./:/app:ro
     ports:
       - "8000:8000"
+    # プレイリスト生成（Issue #12）でホスト上の Ollama（localhost:11434）へ
+    # 到達する必要がある。Linux では host-gateway で解決できるため、
+    # `host.docker.internal` を明示的に追加する。
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   # テスト実行用サービス（Docker 上で pytest を走らせる）
   # CI やローカル開発時に `docker compose run --rm test` で実行できる
